@@ -4,6 +4,7 @@ import com.rrhh.identity.dto.ApiResponse;
 import com.rrhh.identity.dto.request.AsignarUsuarioRequest;
 import com.rrhh.identity.dto.request.CambiarEstadoUsuarioRequest;
 import com.rrhh.identity.dto.request.CrearUsuarioRequest;
+import com.rrhh.identity.dto.request.InvitarUsuarioRequest;
 import com.rrhh.identity.dto.response.MeResponse;
 import com.rrhh.identity.dto.response.UsuarioResponse;
 import com.rrhh.identity.exception.DomainException;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -37,8 +39,19 @@ public class UsuarioController {
     }
 
     @GetMapping("/auth/me")
-    public ApiResponse<MeResponse> me() {
-        return ApiResponse.ok(usuarioService.me(), "Identidad actual");
+    public ApiResponse<MeResponse> me(
+            @RequestHeader(value = "X-Empresa-Slug", required = false) String empresaSlug
+    ) {
+        return ApiResponse.ok(usuarioService.me(empresaSlug), "Identidad actual");
+    }
+
+    @PostMapping("/usuarios/invitar")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN_RRHH')")
+    public ResponseEntity<ApiResponse<UsuarioResponse>> invitar(@Valid @RequestBody InvitarUsuarioRequest request) {
+        validarTenantPresente();
+        UsuarioResponse creado = usuarioService.invitar(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created(creado, "Trabajador invitado"));
     }
 
     @GetMapping("/usuarios")
@@ -54,12 +67,11 @@ public class UsuarioController {
     }
 
     @PostMapping("/usuarios/{usuario_id}/asignar")
-    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN_RRHH')")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN_RRHH','OPERADOR_SAAS')")
     public ApiResponse<UsuarioResponse> asignar(
             @PathVariable("usuario_id") String usuarioId,
             @Valid @RequestBody AsignarUsuarioRequest request
     ) {
-        validarTenantPresente();
         return ApiResponse.ok(usuarioService.asignar(usuarioId, request), "Usuario asignado al tenant");
     }
 

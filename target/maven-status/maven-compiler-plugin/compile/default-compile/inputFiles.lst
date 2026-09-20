@@ -1,12 +1,17 @@
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\config\CorsConfig.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\config\LocalJwtConfig.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\config\SecurityConfig.java
+C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\controller\PlataformaController.java
+C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\controller\TenantResolverController.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\controller\UsuarioController.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\dto\ApiResponse.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\dto\request\AsignarUsuarioRequest.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\dto\request\CambiarEstadoUsuarioRequest.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\dto\request\CrearUsuarioRequest.java
+C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\dto\request\InvitarUsuarioRequest.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\dto\response\MeResponse.java
+C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\dto\response\TenantResolverResponse.java
+C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\dto\response\TenantResumenResponse.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\dto\response\UsuarioResponse.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\exception\DomainException.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\exception\GlobalExceptionHandler.java
@@ -24,4 +29,6 @@ C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-clo
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\security\Roles.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\security\TenantCleanupFilter.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\security\TenantContext.java
+C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\service\TenantService.java
 C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\service\UsuarioService.java
+C:\Users\alfon\Desktop\INGENIERIA_INFORMATICA_DUOC\SEXTO-SEMESTRE\desarrollo-cloud-native\PROYECTO\rrhh-identity\backend\src\main\java\com\rrhh\identity\util\TenantSlug.java

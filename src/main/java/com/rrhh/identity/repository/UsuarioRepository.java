@@ -18,5 +18,13 @@ public interface UsuarioRepository extends JpaRepository<Usuario, String> {
 
     Optional<Usuario> findByCognitoSub(String cognitoSub);
 
+    Optional<Usuario> findByEmailIgnoreCase(String email);
+
+    Optional<Usuario> findByEmailIgnoreCaseAndTenantId(String email, String tenantId);
+
+    List<Usuario> findByEstadoAndTenantIdIsNull(String estado);
+
     boolean existsByTenantIdAndEmail(String tenantId, String email);
+
+    boolean existsByEmailIgnoreCaseAndTenantIdNot(String email, String tenantId);
 }

@@ -10,6 +10,7 @@ public record MeResponse(
         String cognitoSub,
         String estado,
         String codigo,
-        boolean pendiente
+        boolean pendiente,
+        String tenantSlug
 ) {
 }

@@ -22,6 +22,9 @@ public class Tenant {
     @Column(name = "nombre_empresa", nullable = false)
     private String nombreEmpresa;
 
+    @Column(nullable = false, length = 80, unique = true)
+    private String slug;
+
     @Column(name = "rut_empresa", nullable = false, length = 20)
     private String rutEmpresa;
 

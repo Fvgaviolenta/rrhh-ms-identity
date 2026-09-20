@@ -49,6 +49,8 @@ springdoc:
     path: /swagger-ui.html
 
 rrhh:
+  tenant-resolver:
+    delay-ms: ${TENANT_RESOLVER_DELAY_MS:150}
   security:
     jwt:
       role-claim: ${JWT_ROLE_CLAIM:custom:role}

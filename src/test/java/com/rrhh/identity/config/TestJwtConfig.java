@@ -19,6 +19,8 @@ import java.time.Instant;
  *  - "otro"       : Admin de otro tenant.
  *  - "pending"    : Usuario federado (Google) sin tenant/rol.
  *  - "pending2"   : Otro usuario federado sin tenant/rol (para el flujo de asignacion).
+ *  - "invited"    : Google cuyo email fue pre-registrado (INVITADO).
+ *  - "operador"   : OperadorSaaS sin tenant de cliente.
  */
 @TestConfiguration
 public class TestJwtConfig {
@@ -56,6 +58,13 @@ public class TestJwtConfig {
                 case "pending2" -> builder.subject("cognito-google-456")
                         .claim("email", "asignar.google@gmail.com")
                         .claim("name", "Asignar Google");
+                case "invited" -> builder.subject("cognito-invited-789")
+                        .claim("email", "invitado.google@gmail.com")
+                        .claim("name", "Invitado Google");
+                case "operador" -> builder.subject("cognito-operador")
+                        .claim("email", "operador@rrhh.local")
+                        .claim("custom:role", "OperadorSaaS")
+                        .claim("custom:user_id", "dddddddd-dddd-dddd-dddd-dddddddddddd");
                 default -> builder.subject("cognito-unknown")
                         .claim("email", "desconocido@rrhh.local");
             }
