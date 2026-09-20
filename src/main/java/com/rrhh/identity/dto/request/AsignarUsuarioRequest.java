@@ -10,6 +10,7 @@ public record AsignarUsuarioRequest(
                 message = "Rol no oficial"
         )
         String rol,
-        String trabajadorId
+        String trabajadorId,
+        String tenantId
 ) {
 }
