@@ -29,3 +29,4 @@ public class UsuarioMapper {
         return String.format("USR-%06d", secuencia);
     }
 }
+// comentario para subir a github
