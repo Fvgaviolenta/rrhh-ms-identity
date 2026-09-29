@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 public record InvitarUsuarioRequest(
         @NotBlank @Email String email,
         String trabajadorId,
-        String nombre
+        String nombre,
+        boolean crearEnCognito
 ) {
 }

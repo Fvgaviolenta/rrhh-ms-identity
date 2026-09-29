@@ -39,6 +39,7 @@ public class UsuarioService {
     private final AuditLogRepository auditLogRepository;
     private final TenantContext tenantContext;
     private final UsuarioMapper usuarioMapper;
+    private final CognitoProvisioningService cognitoProvisioning;
 
     public UsuarioService(
             UsuarioRepository usuarioRepository,
@@ -46,7 +47,8 @@ public class UsuarioService {
             RolRepository rolRepository,
             AuditLogRepository auditLogRepository,
             TenantContext tenantContext,
-            UsuarioMapper usuarioMapper
+            UsuarioMapper usuarioMapper,
+            CognitoProvisioningService cognitoProvisioning
     ) {
         this.usuarioRepository = usuarioRepository;
         this.tenantRepository = tenantRepository;
@@ -54,6 +56,7 @@ public class UsuarioService {
         this.auditLogRepository = auditLogRepository;
         this.tenantContext = tenantContext;
         this.usuarioMapper = usuarioMapper;
+        this.cognitoProvisioning = cognitoProvisioning;
     }
 
     @Transactional
@@ -267,6 +270,9 @@ public class UsuarioService {
 
     @Transactional
     public UsuarioResponse invitar(InvitarUsuarioRequest request) {
+        if (request.crearEnCognito() && (request.trabajadorId() == null || request.trabajadorId().isBlank())) {
+            throw new DomainException(400, "El trabajador es obligatorio para crear la cuenta", "trabajador_id");
+        }
         TenantContext.AuthenticatedUser actor = tenantContext.require();
         String tenantId = actor.tenantId();
         if (!tenantRepository.existsById(tenantId)) {
@@ -274,6 +280,15 @@ public class UsuarioService {
         }
         String email = request.email().toLowerCase();
         if (usuarioRepository.existsByTenantIdAndEmail(tenantId, email)) {
+            Usuario existente = usuarioRepository.findByEmailIgnoreCase(email).orElseThrow();
+            if (request.crearEnCognito() && tenantId.equals(existente.getTenantId())
+                    && request.trabajadorId().equals(existente.getTrabajadorId())) {
+                if (existente.getCognitoSub() == null) {
+                    existente.setCognitoSub(cognitoProvisioning.crear(existente));
+                    usuarioRepository.saveAndFlush(existente);
+                }
+                return usuarioMapper.toResponse(existente);
+            }
             throw new DomainException(400, "El email ya existe en el tenant", "email");
         }
         usuarioRepository.findByEmailIgnoreCase(email).ifPresent(existente -> {
@@ -292,6 +307,10 @@ public class UsuarioService {
         usuario.setActivo(true);
         usuario.setCreadoEn(Instant.now());
         usuarioRepository.saveAndFlush(usuario);
+        if (request.crearEnCognito()) {
+            usuario.setCognitoSub(cognitoProvisioning.crear(usuario));
+            usuarioRepository.saveAndFlush(usuario);
+        }
         auditar(actor, "Usuario", usuario.getId(), "Invitacion", null, email + "|Trabajador");
         return usuarioMapper.toResponse(usuario);
     }
