@@ -5,6 +5,7 @@ import com.rrhh.identity.dto.request.AsignarUsuarioRequest;
 import com.rrhh.identity.dto.request.CambiarEstadoUsuarioRequest;
 import com.rrhh.identity.dto.request.CrearUsuarioRequest;
 import com.rrhh.identity.dto.request.InvitarUsuarioRequest;
+import com.rrhh.identity.dto.request.SincronizarTrabajadorUsuarioRequest;
 import com.rrhh.identity.dto.response.MeResponse;
 import com.rrhh.identity.dto.response.UsuarioResponse;
 import com.rrhh.identity.exception.DomainException;
@@ -73,6 +74,19 @@ public class UsuarioController {
             @Valid @RequestBody AsignarUsuarioRequest request
     ) {
         return ApiResponse.ok(usuarioService.asignar(usuarioId, request), "Usuario asignado al tenant");
+    }
+
+    @PatchMapping("/usuarios/trabajador/{trabajador_id}")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN_RRHH')")
+    public ApiResponse<UsuarioResponse> sincronizarPorTrabajador(
+            @PathVariable("trabajador_id") String trabajadorId,
+            @RequestBody SincronizarTrabajadorUsuarioRequest request
+    ) {
+        validarTenantPresente();
+        return ApiResponse.ok(
+                usuarioService.sincronizarPorTrabajador(trabajadorId, request.email(), request.nombre()),
+                "Usuario sincronizado con Cognito"
+        );
     }
 
     @GetMapping("/usuarios/{usuario_id}")

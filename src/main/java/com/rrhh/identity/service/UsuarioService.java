@@ -39,6 +39,7 @@ public class UsuarioService {
     private final AuditLogRepository auditLogRepository;
     private final TenantContext tenantContext;
     private final UsuarioMapper usuarioMapper;
+    private final CognitoProvisionService cognitoProvisionService;
 
     public UsuarioService(
             UsuarioRepository usuarioRepository,
@@ -46,7 +47,8 @@ public class UsuarioService {
             RolRepository rolRepository,
             AuditLogRepository auditLogRepository,
             TenantContext tenantContext,
-            UsuarioMapper usuarioMapper
+            UsuarioMapper usuarioMapper,
+            CognitoProvisionService cognitoProvisionService
     ) {
         this.usuarioRepository = usuarioRepository;
         this.tenantRepository = tenantRepository;
@@ -54,6 +56,7 @@ public class UsuarioService {
         this.auditLogRepository = auditLogRepository;
         this.tenantContext = tenantContext;
         this.usuarioMapper = usuarioMapper;
+        this.cognitoProvisionService = cognitoProvisionService;
     }
 
     @Transactional
@@ -292,8 +295,30 @@ public class UsuarioService {
         usuario.setActivo(true);
         usuario.setCreadoEn(Instant.now());
         usuarioRepository.saveAndFlush(usuario);
+        CognitoProvisionService.Result cognito = cognitoProvisionService.provision(usuario);
+        if (cognito.username() != null) {
+            usuario.setCognitoSub(cognito.username());
+            usuarioRepository.save(usuario);
+        }
         auditar(actor, "Usuario", usuario.getId(), "Invitacion", null, email + "|Trabajador");
-        return usuarioMapper.toResponse(usuario);
+        return usuarioMapper.toResponse(usuario, cognito.password(), cognito.error());
+    }
+
+    @Transactional
+    public UsuarioResponse sincronizarPorTrabajador(String trabajadorId, String email, String nombre) {
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        Usuario usuario = usuarioRepository.findByTrabajadorIdAndTenantId(trabajadorId, actor.tenantId())
+                .orElseThrow(() -> new DomainException(404, "No hay usuario de acceso para este trabajador", "trabajador_id"));
+        if (email != null && !email.isBlank()) {
+            usuario.setEmail(email.toLowerCase());
+        }
+        if (nombre != null && !nombre.isBlank()) {
+            usuario.setNombre(nombre);
+        }
+        usuarioRepository.save(usuario);
+        String cognitoError = cognitoProvisionService.actualizar(usuario);
+        auditar(actor, "Usuario", usuario.getId(), "SincronizacionCognito", null, usuario.getEmail());
+        return usuarioMapper.toResponse(usuario, null, cognitoError);
     }
 
     @Transactional

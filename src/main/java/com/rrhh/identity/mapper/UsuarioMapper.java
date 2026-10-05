@@ -18,7 +18,27 @@ public class UsuarioMapper {
                 usuario.getTrabajadorId(),
                 usuario.getCognitoSub(),
                 usuario.getEstado(),
-                usuario.isActivo()
+                usuario.isActivo(),
+                null,
+                null
+        );
+    }
+
+    public UsuarioResponse toResponse(Usuario usuario, String contrasenaTemporal, String cognitoError) {
+        UsuarioResponse base = toResponse(usuario);
+        return new UsuarioResponse(
+                base.id(),
+                base.codigo(),
+                base.tenantId(),
+                base.email(),
+                base.nombre(),
+                base.rol(),
+                base.trabajadorId(),
+                base.cognitoSub(),
+                base.estado(),
+                base.activo(),
+                contrasenaTemporal,
+                cognitoError
         );
     }
 
