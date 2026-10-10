@@ -22,6 +22,8 @@ public interface UsuarioRepository extends JpaRepository<Usuario, String> {
 
     Optional<Usuario> findByEmailIgnoreCaseAndTenantId(String email, String tenantId);
 
+    Optional<Usuario> findByTrabajadorIdAndTenantId(String trabajadorId, String tenantId);
+
     List<Usuario> findByEstadoAndTenantIdIsNull(String estado);
 
     boolean existsByTenantIdAndEmail(String tenantId, String email);

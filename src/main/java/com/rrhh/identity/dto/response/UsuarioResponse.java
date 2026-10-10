@@ -10,6 +10,8 @@ public record UsuarioResponse(
         String trabajadorId,
         String cognitoSub,
         String estado,
-        boolean activo
+        boolean activo,
+        String contrasenaTemporal,
+        String cognitoError
 ) {
 }
