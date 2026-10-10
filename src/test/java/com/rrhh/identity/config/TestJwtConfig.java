@@ -15,6 +15,7 @@ import java.time.Instant;
  *
  * Tokens disponibles:
  *  - "admin"      : Admin de RRHH del tenant demo.
+ *  - "manual-admin" : Cuenta Cognito creada manualmente, sin usuario local.
  *  - "trabajador" : Trabajador del tenant demo.
  *  - "otro"       : Admin de otro tenant.
  *  - "pending"    : Usuario federado (Google) sin tenant/rol.
@@ -44,6 +45,10 @@ public class TestJwtConfig {
                         .claim("custom:tenant_id", TENANT_DEMO)
                         .claim("custom:role", "Admin de RRHH")
                         .claim("custom:user_id", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+                case "manual-admin" -> builder.subject("cognito-admin-123")
+                        .claim("email", "adminempresademospa@mail.com")
+                        .claim("custom:tenant_id", TENANT_DEMO)
+                        .claim("custom:role", "Admin de RRHH");
                 case "trabajador" -> builder.subject("cognito-trab")
                         .claim("email", "trab@rrhh.local")
                         .claim("custom:tenant_id", TENANT_DEMO)
