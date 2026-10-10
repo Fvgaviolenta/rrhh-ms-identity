@@ -3,6 +3,7 @@ package com.rrhh.identity.controller;
 import com.jayway.jsonpath.JsonPath;
 import com.rrhh.identity.IdentityApplication;
 import com.rrhh.identity.config.TestJwtConfig;
+import com.rrhh.identity.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -25,6 +26,9 @@ class UsuarioControllerIT {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UsuarioRepository usuarioRepository;
 
     @Test
     void meDevuelveClaimsDelToken() throws Exception {
@@ -88,6 +92,27 @@ class UsuarioControllerIT {
         String idPrimero = JsonPath.read(primero, "$.datos.user_id");
         String idSegundo = JsonPath.read(segundo, "$.datos.user_id");
         org.junit.jupiter.api.Assertions.assertEquals(idPrimero, idSegundo);
+        org.junit.jupiter.api.Assertions.assertTrue(usuarioRepository.findByCognitoSub("cognito-google-123").isPresent());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "nuevo.google@gmail.com",
+                usuarioRepository.findByCognitoSub("cognito-google-123").orElseThrow().getEmail()
+        );
+    }
+
+    @Test
+    void meAutoProvisionaUsuarioCognitoConTenantYRolActivo() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "manual-admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos.email").value("adminempresademospa@mail.com"))
+                .andExpect(jsonPath("$.datos.cognito_sub").value("cognito-admin-123"))
+                .andExpect(jsonPath("$.datos.tenant_id").value("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"))
+                .andExpect(jsonPath("$.datos.role").value("Admin de RRHH"))
+                .andExpect(jsonPath("$.datos.estado").value("ACTIVO"))
+                .andExpect(jsonPath("$.datos.pendiente").value(false));
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                usuarioRepository.findByCognitoSub("cognito-admin-123").isPresent()
+        );
     }
 
     @Test

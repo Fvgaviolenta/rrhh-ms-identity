@@ -5,6 +5,7 @@ import com.rrhh.identity.dto.request.AsignarUsuarioRequest;
 import com.rrhh.identity.dto.request.CambiarEstadoUsuarioRequest;
 import com.rrhh.identity.dto.request.CrearUsuarioRequest;
 import com.rrhh.identity.dto.request.InvitarUsuarioRequest;
+import com.rrhh.identity.dto.request.SolicitarAccesoRequest;
 import com.rrhh.identity.dto.request.SincronizarTrabajadorUsuarioRequest;
 import com.rrhh.identity.dto.response.MeResponse;
 import com.rrhh.identity.dto.response.UsuarioResponse;
@@ -44,6 +45,11 @@ public class UsuarioController {
             @RequestHeader(value = "X-Empresa-Slug", required = false) String empresaSlug
     ) {
         return ApiResponse.ok(usuarioService.me(empresaSlug), "Identidad actual");
+    }
+
+    @PostMapping("/auth/access-requests")
+    public ApiResponse<UsuarioResponse> solicitarAcceso(@Valid @RequestBody SolicitarAccesoRequest request) {
+        return ApiResponse.created(usuarioService.solicitarAcceso(request), "Solicitud de acceso enviada");
     }
 
     @PostMapping("/usuarios/invitar")
