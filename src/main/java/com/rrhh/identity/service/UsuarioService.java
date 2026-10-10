@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Set;
 import java.util.List;
 import java.util.UUID;
 
@@ -320,6 +321,27 @@ public class UsuarioService {
             throw new DomainException(400, "El trabajador es obligatorio para crear la cuenta", "trabajador_id");
         }
         TenantContext.AuthenticatedUser actor = tenantContext.require();
+        String actorAuthority = Roles.authorityFromClaim(actor.role());
+        if (request.rol() == null || request.rol().isBlank()) {
+            throw new DomainException(400, "El rol es obligatorio", "rol");
+        }
+        String requestedRole = request.rol().trim();
+        if (!Set.of("ADMIN_RRHH", "JEFATURA", "TRABAJADOR", "Admin de RRHH", "Jefatura", "Trabajador",
+                "ROLE_ADMIN_RRHH", "ROLE_JEFATURA", "ROLE_TRABAJADOR", "SUPERADMIN", "SuperAdmin", "ROLE_SUPERADMIN")
+                .contains(requestedRole)) {
+            throw new DomainException(400, "Rol no oficial", "rol");
+        }
+        String requestedAuthority = Roles.authorityFromClaim(requestedRole);
+        if (Roles.ADMIN_RRHH.equals(actorAuthority) && Roles.SUPERADMIN.equals(requestedAuthority)) {
+            throw new DomainException(403, "Admin de RRHH no puede asignar el rol SUPERADMIN", "rol");
+        }
+        if (!Roles.ADMIN_RRHH.equals(requestedAuthority)
+                && !Roles.JEFATURA.equals(requestedAuthority)
+                && !Roles.TRABAJADOR.equals(requestedAuthority)
+                && !(Roles.OPERADOR_SAAS.equals(actorAuthority) && Roles.SUPERADMIN.equals(requestedAuthority))) {
+            throw new DomainException(400, "Rol no permitido para esta invitación", "rol");
+        }
+        String rol = Roles.claimFromAuthority(requestedAuthority);
         String tenantId = actor.tenantId();
         if (!tenantRepository.existsById(tenantId)) {
             throw new DomainException(400, "El tenant del token no existe", "tenant_id");
@@ -329,6 +351,8 @@ public class UsuarioService {
             Usuario existente = usuarioRepository.findByEmailIgnoreCase(email).orElseThrow();
             if (request.crearEnCognito() && tenantId.equals(existente.getTenantId())
                     && request.trabajadorId().equals(existente.getTrabajadorId())) {
+                existente.setRol(rol);
+                usuarioRepository.saveAndFlush(existente);
                 CognitoProvisionService.Result cognito = new CognitoProvisionService.Result(null, null, null);
                 if (existente.getCognitoSub() == null) {
                     cognito = cognitoProvisionService.provision(existente);
@@ -351,7 +375,7 @@ public class UsuarioService {
         usuario.setTenantId(tenantId);
         usuario.setEmail(email);
         usuario.setNombre(request.nombre());
-        usuario.setRol("Trabajador");
+        usuario.setRol(rol);
         usuario.setTrabajadorId(request.trabajadorId());
         usuario.setEstado(ESTADO_INVITADO);
         usuario.setActivo(true);
@@ -365,7 +389,7 @@ public class UsuarioService {
                 usuarioRepository.saveAndFlush(usuario);
             }
         }
-        auditar(actor, "Usuario", usuario.getId(), "Invitacion", null, email + "|Trabajador");
+        auditar(actor, "Usuario", usuario.getId(), "Invitacion", null, email + "|" + rol);
         return usuarioMapper.toResponse(usuario, cognito.password(), cognito.error());
     }
 
