@@ -104,6 +104,9 @@ public class UsuarioService {
                 && !Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(actor.role()))) {
             local = provisionarPendiente(actor);
         }
+        if (local != null) {
+            sincronizarIdentidadCognito(local, actor);
+        }
 
         if (esperado != null && actor.tenantId() != null
                 && !esperado.getId().equals(actor.tenantId())
@@ -257,6 +260,33 @@ public class UsuarioService {
             // saveAndFlush fuerza el INSERT para que @Generated recargue la secuencia (codigo) de inmediato.
             return usuarioRepository.saveAndFlush(usuario);
         });
+    }
+
+    private void sincronizarIdentidadCognito(Usuario local, TenantContext.AuthenticatedUser actor) {
+        if (actor.tenantId() == null || !Roles.isSupportedClaim(actor.role())
+                || !tenantRepository.existsById(actor.tenantId())) {
+            return;
+        }
+        if (local.getTenantId() != null && !actor.tenantId().equals(local.getTenantId())) {
+            throw new DomainException(403, "Este usuario no pertenece al tenant indicado");
+        }
+        boolean changed = false;
+        if (local.getTenantId() == null) {
+            local.setTenantId(actor.tenantId());
+            changed = true;
+        }
+        if (local.getRol() == null) {
+            local.setRol(actor.role());
+            changed = true;
+        }
+        if (ESTADO_PENDIENTE.equals(local.getEstado())) {
+            local.setEstado(ESTADO_ACTIVO);
+            changed = true;
+        }
+        if (changed) {
+            local.setActivo(true);
+            usuarioRepository.saveAndFlush(local);
+        }
     }
 
     public List<UsuarioResponse> listar() {

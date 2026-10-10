@@ -34,4 +34,15 @@ public final class Roles {
             default -> "Trabajador";
         };
     }
+
+    public static boolean isSupportedClaim(String roleClaim) {
+        return switch (roleClaim == null ? "" : roleClaim.trim()) {
+            case "OperadorSaaS", "ROLE_OPERADOR_SAAS",
+                    "SuperAdmin", "ROLE_SUPERADMIN",
+                    "Admin de RRHH", "ROLE_ADMIN_RRHH",
+                    "Jefatura", "ROLE_JEFATURA",
+                    "Trabajador", "ROLE_TRABAJADOR" -> true;
+            default -> false;
+        };
+    }
 }
