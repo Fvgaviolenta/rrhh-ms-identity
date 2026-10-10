@@ -17,10 +17,10 @@ public final class Roles {
         }
         return switch (roleClaim.trim()) {
             case "OperadorSaaS", "ROLE_OPERADOR_SAAS" -> OPERADOR_SAAS;
-            case "SuperAdmin", "ROLE_SUPERADMIN" -> SUPERADMIN;
-            case "Admin de RRHH", "ROLE_ADMIN_RRHH" -> ADMIN_RRHH;
-            case "Jefatura", "ROLE_JEFATURA" -> JEFATURA;
-            case "Trabajador", "ROLE_TRABAJADOR" -> TRABAJADOR;
+            case "SuperAdmin", "SUPERADMIN", "ROLE_SUPERADMIN" -> SUPERADMIN;
+            case "Admin de RRHH", "ADMIN_RRHH", "ROLE_ADMIN_RRHH" -> ADMIN_RRHH;
+            case "Jefatura", "JEFATURA", "ROLE_JEFATURA" -> JEFATURA;
+            case "Trabajador", "TRABAJADOR", "ROLE_TRABAJADOR" -> TRABAJADOR;
             default -> TRABAJADOR;
         };
     }
@@ -32,17 +32,6 @@ public final class Roles {
             case ADMIN_RRHH -> "Admin de RRHH";
             case JEFATURA -> "Jefatura";
             default -> "Trabajador";
-        };
-    }
-
-    public static boolean isSupportedClaim(String roleClaim) {
-        return switch (roleClaim == null ? "" : roleClaim.trim()) {
-            case "OperadorSaaS", "ROLE_OPERADOR_SAAS",
-                    "SuperAdmin", "ROLE_SUPERADMIN",
-                    "Admin de RRHH", "ROLE_ADMIN_RRHH",
-                    "Jefatura", "ROLE_JEFATURA",
-                    "Trabajador", "ROLE_TRABAJADOR" -> true;
-            default -> false;
         };
     }
 }

@@ -7,6 +7,7 @@ public record InvitarUsuarioRequest(
         @NotBlank @Email String email,
         String trabajadorId,
         String nombre,
+        String rol,
         boolean crearEnCognito
 ) {
 }

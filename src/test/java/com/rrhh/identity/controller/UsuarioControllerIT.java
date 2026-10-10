@@ -3,7 +3,6 @@ package com.rrhh.identity.controller;
 import com.jayway.jsonpath.JsonPath;
 import com.rrhh.identity.IdentityApplication;
 import com.rrhh.identity.config.TestJwtConfig;
-import com.rrhh.identity.model.Usuario;
 import com.rrhh.identity.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,8 +17,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import java.time.Instant;
 
 @SpringBootTest(classes = IdentityApplication.class)
 @AutoConfigureMockMvc
@@ -104,15 +101,6 @@ class UsuarioControllerIT {
 
     @Test
     void meAutoProvisionaUsuarioCognitoConTenantYRolActivo() throws Exception {
-        Usuario pendiente = new Usuario();
-        pendiente.setId("manual-admin-pending");
-        pendiente.setEmail("adminempresademospa@mail.com");
-        pendiente.setCognitoSub("cognito-admin-123");
-        pendiente.setEstado("PENDIENTE");
-        pendiente.setActivo(true);
-        pendiente.setCreadoEn(Instant.now());
-        usuarioRepository.saveAndFlush(pendiente);
-
         mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "manual-admin"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datos.email").value("adminempresademospa@mail.com"))
