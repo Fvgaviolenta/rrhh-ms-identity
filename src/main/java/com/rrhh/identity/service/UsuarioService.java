@@ -262,13 +262,28 @@ public class UsuarioService {
 
     public List<UsuarioResponse> listar() {
         String tenantId = requireTenant();
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        return usuarioRepository.findByTenantId(tenantId).stream()
+                .filter(usuario -> puedeGestionarUsuario(actor, usuario))
+                .map(usuarioMapper::toResponse)
+                .toList();
+    }
+
+    public List<UsuarioResponse> listarPorTenantPlataforma(String tenantId) {
+        TenantContext.AuthenticatedUser actor = tenantContext.current();
+        if (!Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(actor.role()))) {
+            throw new DomainException(403, "Acceso exclusivo para el operador SaaS");
+        }
         return usuarioRepository.findByTenantId(tenantId).stream()
                 .map(usuarioMapper::toResponse)
                 .toList();
     }
 
     public UsuarioResponse obtener(String usuarioId) {
-        return usuarioMapper.toResponse(buscarDelTenant(usuarioId));
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        Usuario usuario = buscarDelTenant(usuarioId);
+        validarQuePuedeGestionarUsuario(actor, usuario);
+        return usuarioMapper.toResponse(usuario);
     }
 
     public List<UsuarioResponse> listarPendientes() {
@@ -398,6 +413,7 @@ public class UsuarioService {
         TenantContext.AuthenticatedUser actor = tenantContext.require();
         Usuario usuario = usuarioRepository.findByTrabajadorIdAndTenantId(trabajadorId, actor.tenantId())
                 .orElseThrow(() -> new DomainException(404, "No hay usuario de acceso para este trabajador", "trabajador_id"));
+        validarQuePuedeGestionarUsuario(actor, usuario);
         if (email != null && !email.isBlank()) {
             usuario.setEmail(email.toLowerCase());
         }
@@ -413,6 +429,7 @@ public class UsuarioService {
     @Transactional
     public UsuarioResponse asignar(String usuarioId, AsignarUsuarioRequest request) {
         TenantContext.AuthenticatedUser actor = tenantContext.current();
+        validarRolAsignablePor(actor, request.rol());
         boolean operador = Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(actor.role()));
         String tenantId = operador ? request.tenantId() : actor.tenantId();
         if (tenantId == null || tenantId.isBlank()) {
@@ -446,6 +463,7 @@ public class UsuarioService {
     @Transactional
     public UsuarioResponse crear(CrearUsuarioRequest request) {
         TenantContext.AuthenticatedUser actor = tenantContext.require();
+        validarRolAsignablePor(actor, request.rol());
         String tenantId = actor.tenantId();
         if (!tenantRepository.existsById(tenantId)) {
             throw new DomainException(400, "El tenant del token no existe", "tenant_id");
@@ -474,6 +492,7 @@ public class UsuarioService {
     public UsuarioResponse cambiarEstado(String usuarioId, CambiarEstadoUsuarioRequest request) {
         TenantContext.AuthenticatedUser actor = tenantContext.require();
         Usuario usuario = buscarDelTenant(usuarioId);
+        validarQuePuedeGestionarUsuario(actor, usuario);
         String anterior = String.valueOf(usuario.isActivo());
         usuario.setActivo(request.activo());
         usuarioRepository.save(usuario);
@@ -489,6 +508,25 @@ public class UsuarioService {
     private Usuario buscarDelTenant(String usuarioId) {
         return usuarioRepository.findByIdAndTenantId(usuarioId, requireTenant())
                 .orElseThrow(() -> new DomainException(404, "Usuario no encontrado"));
+    }
+
+    private boolean puedeGestionarUsuario(TenantContext.AuthenticatedUser actor, Usuario usuario) {
+        return !Roles.ADMIN_RRHH.equals(Roles.authorityFromClaim(actor.role()))
+                || !Roles.SUPERADMIN.equals(Roles.authorityFromClaim(usuario.getRol()));
+    }
+
+    private void validarQuePuedeGestionarUsuario(TenantContext.AuthenticatedUser actor, Usuario usuario) {
+        if (!puedeGestionarUsuario(actor, usuario)) {
+            // Se responde como no encontrado para no revelar datos de la cuenta protegida.
+            throw new DomainException(404, "Usuario no encontrado");
+        }
+    }
+
+    private void validarRolAsignablePor(TenantContext.AuthenticatedUser actor, String rol) {
+        if (Roles.ADMIN_RRHH.equals(Roles.authorityFromClaim(actor.role()))
+                && Roles.SUPERADMIN.equals(Roles.authorityFromClaim(rol))) {
+            throw new DomainException(403, "Admin de RRHH no puede crear ni asignar cuentas SUPERADMIN", "rol");
+        }
     }
 
     private String requireTenant() {

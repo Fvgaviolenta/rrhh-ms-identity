@@ -9,6 +9,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.List;
 
@@ -34,5 +35,11 @@ public class PlataformaController {
     @PreAuthorize("hasRole('OPERADOR_SAAS')")
     public ApiResponse<List<UsuarioResponse>> pendientes() {
         return ApiResponse.ok(usuarioService.listarPendientesGlobales(), "Usuarios pendientes globales");
+    }
+
+    @GetMapping("/tenants/{tenant_id}/usuarios")
+    @PreAuthorize("hasRole('OPERADOR_SAAS')")
+    public ApiResponse<List<UsuarioResponse>> usuariosPorTenant(@PathVariable("tenant_id") String tenantId) {
+        return ApiResponse.ok(usuarioService.listarPorTenantPlataforma(tenantId), "Usuarios del tenant solicitado");
     }
 }
