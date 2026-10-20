@@ -82,6 +82,12 @@ public class UsuarioController {
         return ApiResponse.ok(usuarioService.asignar(usuarioId, request), "Usuario asignado al tenant");
     }
 
+    @PatchMapping("/usuarios/{usuario_id}/rechazar-solicitud")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN_RRHH')")
+    public ApiResponse<UsuarioResponse> rechazarSolicitud(@PathVariable("usuario_id") String usuarioId) {
+        return ApiResponse.ok(usuarioService.rechazarSolicitud(usuarioId), "Solicitud de acceso rechazada");
+    }
+
     @PatchMapping("/usuarios/trabajador/{trabajador_id}")
     @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN_RRHH')")
     public ApiResponse<UsuarioResponse> sincronizarPorTrabajador(
