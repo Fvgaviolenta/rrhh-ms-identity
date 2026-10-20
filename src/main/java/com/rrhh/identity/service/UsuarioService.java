@@ -164,8 +164,12 @@ public class UsuarioService {
         if (invitacion == null) {
             return null;
         }
+        boolean identificadorProvisional = invitacion.getCognitoSub() != null
+                && invitacion.getEmail() != null
+                && invitacion.getCognitoSub().equalsIgnoreCase(invitacion.getEmail());
         if (invitacion.getCognitoSub() != null && actor.cognitoSub() != null
-                && !invitacion.getCognitoSub().equals(actor.cognitoSub())) {
+                && !invitacion.getCognitoSub().equals(actor.cognitoSub())
+                && !identificadorProvisional) {
             throw new DomainException(403, "Este correo ya está vinculado a otra identidad", "email");
         }
         invitacion.setCognitoSub(actor.cognitoSub());
@@ -367,6 +371,8 @@ public class UsuarioService {
             if (request.crearEnCognito() && tenantId.equals(existente.getTenantId())
                     && request.trabajadorId().equals(existente.getTrabajadorId())) {
                 existente.setRol(rol);
+                existente.setEstado(ESTADO_ACTIVO);
+                existente.setActivo(true);
                 usuarioRepository.saveAndFlush(existente);
                 CognitoProvisionService.Result cognito = new CognitoProvisionService.Result(null, null, null);
                 if (existente.getCognitoSub() == null) {
@@ -392,7 +398,8 @@ public class UsuarioService {
         usuario.setNombre(request.nombre());
         usuario.setRol(rol);
         usuario.setTrabajadorId(request.trabajadorId());
-        usuario.setEstado(ESTADO_INVITADO);
+        // La cuenta fue creada por RRHH, por lo que no requiere aprobación posterior.
+        usuario.setEstado(ESTADO_ACTIVO);
         usuario.setActivo(true);
         usuario.setCreadoEn(Instant.now());
         usuarioRepository.saveAndFlush(usuario);
@@ -442,11 +449,16 @@ public class UsuarioService {
                 .orElseThrow(() -> new DomainException(400, "Rol no oficial", "rol"));
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new DomainException(404, "Usuario no encontrado"));
-        if (usuario.getTenantId() != null) {
+        if (usuario.getTenantId() != null
+                && (!tenantId.equals(usuario.getTenantId()) || !ESTADO_PENDIENTE.equals(usuario.getEstado()))) {
             throw new DomainException(400, "El usuario ya esta asignado a un tenant");
         }
-        if (usuario.getEmail() != null && usuarioRepository.existsByTenantIdAndEmail(tenantId, usuario.getEmail())) {
-            throw new DomainException(400, "El email ya existe en el tenant", "email");
+        if (usuario.getEmail() != null) {
+            usuarioRepository.findByTenantIdAndEmail(tenantId, usuario.getEmail())
+                    .filter(existente -> !existente.getId().equals(usuario.getId()))
+                    .ifPresent(existente -> {
+                        throw new DomainException(400, "El email ya existe en el tenant", "email");
+                    });
         }
         String anterior = usuario.getEstado() + "|" + usuario.getTenantId() + "|" + usuario.getRol();
         usuario.setTenantId(tenantId);
@@ -497,6 +509,21 @@ public class UsuarioService {
         usuario.setActivo(request.activo());
         usuarioRepository.save(usuario);
         auditar(actor, "Usuario", usuario.getId(), "Modificacion", anterior, String.valueOf(usuario.isActivo()));
+        return usuarioMapper.toResponse(usuario);
+    }
+
+    @Transactional
+    public UsuarioResponse rechazarSolicitud(String usuarioId) {
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        Usuario usuario = buscarDelTenant(usuarioId);
+        validarQuePuedeGestionarUsuario(actor, usuario);
+        if (!ESTADO_PENDIENTE.equals(usuario.getEstado())) {
+            throw new DomainException(400, "La solicitud ya fue resuelta");
+        }
+        usuario.setEstado("RECHAZADO");
+        usuario.setActivo(false);
+        usuarioRepository.save(usuario);
+        auditar(actor, "Usuario", usuario.getId(), "SolicitudRechazada", null, usuario.getEmail());
         return usuarioMapper.toResponse(usuario);
     }
 
