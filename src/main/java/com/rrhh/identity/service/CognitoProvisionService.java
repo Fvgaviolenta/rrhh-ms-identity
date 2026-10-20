@@ -45,7 +45,7 @@ public class CognitoProvisionService {
         String password = generarContrasena();
         try (CognitoIdentityProviderClient client = client()) {
             String username = crearOActualizar(client, usuario, password);
-            fijarContrasena(client, username, password);
+            establecerContrasenaTemporal(client, username, password);
             return new Result(password, null, username);
         } catch (CognitoIdentityProviderException ex) {
             return Result.error(mensaje(ex));
@@ -113,12 +113,14 @@ public class CognitoProvisionService {
         }
     }
 
-    private void fijarContrasena(CognitoIdentityProviderClient client, String username, String password) {
+    private void establecerContrasenaTemporal(CognitoIdentityProviderClient client, String username, String password) {
         client.adminSetUserPassword(AdminSetUserPasswordRequest.builder()
                 .userPoolId(userPoolId)
                 .username(username)
                 .password(password)
-                .permanent(true)
+                // Cognito responderá NEW_PASSWORD_REQUIRED al primer ingreso.
+                // La contraseña se devuelve solo en esta respuesta y nunca se persiste en la base de datos.
+                .permanent(false)
                 .build());
     }
 
