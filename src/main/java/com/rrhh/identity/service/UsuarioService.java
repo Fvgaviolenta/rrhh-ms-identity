@@ -434,6 +434,38 @@ public class UsuarioService {
     }
 
     @Transactional
+    public UsuarioResponse cambiarRolPorTrabajador(String trabajadorId, String rolSolicitado) {
+        TenantContext.AuthenticatedUser actor = tenantContext.require();
+        Usuario usuario = usuarioRepository.findByTrabajadorIdAndTenantId(trabajadorId, actor.tenantId())
+                .orElseThrow(() -> new DomainException(404, "El trabajador no tiene una cuenta de acceso", "trabajador_id"));
+        validarQuePuedeGestionarUsuario(actor, usuario);
+        boolean esMismaCuenta = usuario.getId().equals(actor.userId())
+                || (usuario.getCognitoSub() != null && usuario.getCognitoSub().equals(actor.cognitoSub()));
+        if (esMismaCuenta) {
+            throw new DomainException(403, "No puedes cambiar tu propio rol", "rol");
+        }
+        String autoridadActual = Roles.authorityFromClaim(usuario.getRol());
+        if (Roles.SUPERADMIN.equals(autoridadActual) || Roles.OPERADOR_SAAS.equals(autoridadActual)) {
+            throw new DomainException(403, "El rol de esta cuenta no se puede modificar", "rol");
+        }
+        if (!ESTADO_ACTIVO.equals(usuario.getEstado())) {
+            throw new DomainException(400, "Solo se puede cambiar el rol de una cuenta activa", "estado");
+        }
+        String autoridadNueva = Roles.authorityFromClaim(rolSolicitado);
+        if (!Set.of(Roles.ADMIN_RRHH, Roles.JEFATURA, Roles.TRABAJADOR).contains(autoridadNueva)) {
+            throw new DomainException(400, "Rol no permitido", "rol");
+        }
+        String rolNuevo = Roles.claimFromAuthority(autoridadNueva);
+        String anterior = usuario.getRol();
+        usuario.setRol(rolNuevo);
+        usuarioRepository.save(usuario);
+        // custom:role vive en Cognito: sin esta sincronización el siguiente JWT conservaría el rol anterior.
+        String cognitoError = cognitoProvisionService.actualizar(usuario);
+        auditar(actor, "Usuario", usuario.getId(), "Modificacion", "rol=" + anterior, "rol=" + rolNuevo);
+        return usuarioMapper.toResponse(usuario, null, cognitoError);
+    }
+
+    @Transactional
     public UsuarioResponse asignar(String usuarioId, AsignarUsuarioRequest request) {
         TenantContext.AuthenticatedUser actor = tenantContext.current();
         validarRolAsignablePor(actor, request.rol());

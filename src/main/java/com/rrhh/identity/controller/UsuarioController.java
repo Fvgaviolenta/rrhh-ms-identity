@@ -3,6 +3,7 @@ package com.rrhh.identity.controller;
 import com.rrhh.identity.dto.ApiResponse;
 import com.rrhh.identity.dto.request.AsignarUsuarioRequest;
 import com.rrhh.identity.dto.request.CambiarEstadoUsuarioRequest;
+import com.rrhh.identity.dto.request.CambiarRolUsuarioRequest;
 import com.rrhh.identity.dto.request.CrearUsuarioRequest;
 import com.rrhh.identity.dto.request.InvitarUsuarioRequest;
 import com.rrhh.identity.dto.request.SolicitarAccesoRequest;
@@ -99,6 +100,16 @@ public class UsuarioController {
                 usuarioService.sincronizarPorTrabajador(trabajadorId, request.email(), request.nombre()),
                 "Usuario sincronizado con Cognito"
         );
+    }
+
+    @PatchMapping("/usuarios/trabajador/{trabajador_id}/rol")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN_RRHH')")
+    public ApiResponse<UsuarioResponse> cambiarRol(
+            @PathVariable("trabajador_id") String trabajadorId,
+            @Valid @RequestBody CambiarRolUsuarioRequest request
+    ) {
+        validarTenantPresente();
+        return ApiResponse.ok(usuarioService.cambiarRolPorTrabajador(trabajadorId, request.rol()), "Rol actualizado");
     }
 
     @GetMapping("/usuarios/{usuario_id}")

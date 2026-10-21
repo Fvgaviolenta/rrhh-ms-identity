@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -144,6 +145,61 @@ class UsuarioControllerIT {
                                 {"rol":"Jefatura"}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void adminCambiaElRolDeUnTrabajadorConCuenta() throws Exception {
+        mockMvc.perform(post("/api/v1/usuarios")
+                        .header("Authorization", "Bearer admin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"cambio.rol@rrhh.local","rol":"Trabajador","trabajador_id":"99999999-0000-0000-0000-000000000001"}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(patch("/api/v1/usuarios/trabajador/99999999-0000-0000-0000-000000000001/rol")
+                        .header("Authorization", "Bearer admin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"rol":"JEFATURA"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos.rol").value("Jefatura"));
+
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "Jefatura",
+                usuarioRepository.findByEmailIgnoreCase("cambio.rol@rrhh.local").orElseThrow().getRol()
+        );
+    }
+
+    @Test
+    void cambiarRolRechazaRolNoPermitidoYTrabajadorSinCuenta() throws Exception {
+        mockMvc.perform(patch("/api/v1/usuarios/trabajador/99999999-0000-0000-0000-000000000002/rol")
+                        .header("Authorization", "Bearer admin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"rol":"SUPERADMIN"}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(patch("/api/v1/usuarios/trabajador/99999999-0000-0000-0000-000000000002/rol")
+                        .header("Authorization", "Bearer admin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"rol":"Jefatura"}
+                                """))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void trabajadorNoPuedeCambiarRoles() throws Exception {
+        mockMvc.perform(patch("/api/v1/usuarios/trabajador/99999999-0000-0000-0000-000000000001/rol")
+                        .header("Authorization", "Bearer trabajador")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"rol":"Jefatura"}
+                                """))
+                .andExpect(status().isForbidden());
     }
 
     @Test
