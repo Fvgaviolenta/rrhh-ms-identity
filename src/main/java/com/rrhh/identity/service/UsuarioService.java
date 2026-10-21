@@ -467,9 +467,12 @@ public class UsuarioService {
         usuario.setEstado(ESTADO_ACTIVO);
         usuario.setActivo(true);
         usuarioRepository.save(usuario);
+        // La asignación cambia los claims de autorización. Sin esta sincronización,
+        // el siguiente token de Cognito seguiría sin custom:trabajador_id.
+        String cognitoError = cognitoProvisionService.actualizar(usuario);
         auditar(actor, "Usuario", usuario.getId(), "Asignacion", anterior,
                 usuario.getTenantId() + "|" + usuario.getRol());
-        return usuarioMapper.toResponse(usuario);
+        return usuarioMapper.toResponse(usuario, null, cognitoError);
     }
 
     @Transactional
