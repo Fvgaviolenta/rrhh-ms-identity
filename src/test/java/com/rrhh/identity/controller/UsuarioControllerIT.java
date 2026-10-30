@@ -102,7 +102,7 @@ class UsuarioControllerIT {
 
     @Test
     void meAutoProvisionaUsuarioCognitoConTenantYRolActivo() throws Exception {
-        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "manual-admin"))
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer manual-admin"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datos.email").value("adminempresademospa@mail.com"))
                 .andExpect(jsonPath("$.datos.cognito_sub").value("cognito-admin-123"))
@@ -228,10 +228,10 @@ class UsuarioControllerIT {
                         .header("Authorization", "Bearer admin")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"email":"invitado.google@gmail.com","nombre":"Invitado"}
+                                {"email":"invitado.google@gmail.com","nombre":"Invitado","rol":"Trabajador"}
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.datos.estado").value("INVITADO"))
+                .andExpect(jsonPath("$.datos.estado").value("ACTIVO"))
                 .andExpect(jsonPath("$.datos.rol").value("Trabajador"));
 
         mockMvc.perform(get("/api/v1/auth/me")
