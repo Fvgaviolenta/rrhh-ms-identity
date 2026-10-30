@@ -13,4 +13,14 @@ public interface TenantRepository extends JpaRepository<Tenant, String> {
     Optional<Tenant> findByNombreEmpresaIgnoreCase(String nombreEmpresa);
 
     List<Tenant> findByActivoTrueAndSlugNotOrderByNombreEmpresaAsc(String slug);
+
+    Optional<Tenant> findByRutEmpresa(String rutEmpresa);
+
+    boolean existsByRutEmpresa(String rutEmpresa);
+
+    boolean existsBySlug(String slug);
+
+    List<Tenant> findBySlugNotOrderByNombreEmpresaAsc(String slug);
+
+    List<Tenant> findByEstadoAndSlugNotOrderByNombreEmpresaAsc(String estado, String slug);
 }
