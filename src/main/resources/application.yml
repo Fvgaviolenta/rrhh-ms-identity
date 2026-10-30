@@ -49,6 +49,11 @@ springdoc:
     path: /swagger-ui.html
 
 rrhh:
+  sqs:
+    enabled: ${RRHH_SQS_ENABLED:false}
+    events-queue-url: ${SQS_EVENTS_QUEUE_URL:}
+    region: ${AWS_REGION:us-east-1}
+    publish-delay-ms: ${SQS_PUBLISH_DELAY_MS:5000}
   tenant-resolver:
     delay-ms: ${TENANT_RESOLVER_DELAY_MS:150}
   security:
