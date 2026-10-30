@@ -18,4 +18,11 @@ class TenantSlugTest {
         assertTrue(TenantSlug.isPlataforma("plataforma"));
         assertTrue(TenantSlug.isPlataforma("Plataforma RRHH SaaS"));
     }
+
+    @Test
+    void unicoEvitaVacioYReservado() {
+        assertEquals("empresa", TenantSlug.unico("!!!", s -> false));
+        assertEquals("plataforma-2", TenantSlug.unico("Plataforma", s -> false));
+        assertEquals("acme-3", TenantSlug.unico("ACME", s -> s.equals("acme") || s.equals("acme-2")));
+    }
 }

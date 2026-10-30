@@ -309,10 +309,10 @@ class UsuarioControllerIT {
 
     @Test
     void solicitudARutInexistenteNoCreaUsuario() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/access-requests").header("Authorization", "Bearer registrante")
+        mockMvc.perform(post("/api/v1/auth/access-requests").header("Authorization", "Bearer pending")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"rut_empresa\":\"11111111-1\"}"))
                 .andExpect(status().isNotFound());
-        assertTrue(usuarioRepository.findByCognitoSub("cognito-reg-1").isEmpty());
+        assertTrue(usuarioRepository.findByCognitoSub("cognito-google-123").isEmpty());
     }
 
     @Test

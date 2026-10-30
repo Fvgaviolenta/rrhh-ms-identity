@@ -9,11 +9,9 @@ import com.rrhh.identity.dto.response.MeResponse;
 import com.rrhh.identity.dto.response.UsuarioResponse;
 import com.rrhh.identity.exception.DomainException;
 import com.rrhh.identity.mapper.UsuarioMapper;
-import com.rrhh.identity.model.AuditLog;
 import com.rrhh.identity.model.Tenant;
 import com.rrhh.identity.model.TenantEstado;
 import com.rrhh.identity.model.Usuario;
-import com.rrhh.identity.repository.AuditLogRepository;
 import com.rrhh.identity.repository.RolRepository;
 import com.rrhh.identity.repository.TenantRepository;
 import com.rrhh.identity.repository.UsuarioRepository;
@@ -43,7 +41,7 @@ public class UsuarioService {
     private final UsuarioRepository usuarioRepository;
     private final TenantRepository tenantRepository;
     private final RolRepository rolRepository;
-    private final AuditLogRepository auditLogRepository;
+    private final AuditLogService auditLogService;
     private final TenantContext tenantContext;
     private final UsuarioMapper usuarioMapper;
     private final CognitoProvisionService cognitoProvisionService;
@@ -55,7 +53,7 @@ public class UsuarioService {
             UsuarioRepository usuarioRepository,
             TenantRepository tenantRepository,
             RolRepository rolRepository,
-            AuditLogRepository auditLogRepository,
+            AuditLogService auditLogService,
             TenantContext tenantContext,
             UsuarioMapper usuarioMapper,
             CognitoProvisionService cognitoProvisionService,
@@ -66,7 +64,7 @@ public class UsuarioService {
         this.usuarioRepository = usuarioRepository;
         this.tenantRepository = tenantRepository;
         this.rolRepository = rolRepository;
-        this.auditLogRepository = auditLogRepository;
+        this.auditLogService = auditLogService;
         this.tenantContext = tenantContext;
         this.usuarioMapper = usuarioMapper;
         this.cognitoProvisionService = cognitoProvisionService;
@@ -698,16 +696,6 @@ public class UsuarioService {
             String anterior,
             String nuevo
     ) {
-        AuditLog log = new AuditLog();
-        log.setId(UUID.randomUUID().toString());
-        log.setTenantId(actor.tenantId() != null ? actor.tenantId() : "00000000-0000-0000-0000-000000000001");
-        log.setUsuarioId(actor.userId());
-        log.setEntidad(entidad);
-        log.setEntidadId(entidadId);
-        log.setAccion(accion);
-        log.setValoresAnteriores(anterior);
-        log.setValoresNuevos(nuevo);
-        log.setFechaEvento(Instant.now());
-        auditLogRepository.save(log);
+        auditLogService.registrar(actor.tenantId(), actor.userId(), entidad, entidadId, accion, anterior, nuevo);
     }
 }
