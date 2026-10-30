@@ -377,7 +377,8 @@ class UsuarioControllerIT {
     void operadorListaEmpresasCliente() throws Exception {
         mockMvc.perform(get("/api/v1/plataforma/tenants").header("Authorization", "Bearer operador"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.datos[0].slug").value("empresa-demo-spa"));
+                .andExpect(jsonPath("$.datos[?(@.slug=='empresa-demo-spa')]").isNotEmpty())
+                .andExpect(jsonPath("$.datos[?(@.slug=='plataforma')]").isEmpty());
     }
 
     @Test

@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -35,6 +36,7 @@ public class TenantService {
     private final UsuarioRepository usuarioRepository;
     private final TenantContext tenantContext;
     private final AuditLogService auditLogService;
+    private final CognitoProvisionService cognitoProvisionService;
     private final long delayMs;
 
     public TenantService(
@@ -42,12 +44,14 @@ public class TenantService {
             UsuarioRepository usuarioRepository,
             TenantContext tenantContext,
             AuditLogService auditLogService,
+            CognitoProvisionService cognitoProvisionService,
             @Value("${rrhh.tenant-resolver.delay-ms:150}") long delayMs
     ) {
         this.tenantRepository = tenantRepository;
         this.usuarioRepository = usuarioRepository;
         this.tenantContext = tenantContext;
         this.auditLogService = auditLogService;
+        this.cognitoProvisionService = cognitoProvisionService;
         this.delayMs = delayMs;
     }
 
@@ -203,10 +207,87 @@ public class TenantService {
         }
     }
 
-    public List<TenantResumenResponse> listarClientes() {
-        return tenantRepository.findByActivoTrueAndSlugNotOrderByNombreEmpresaAsc(TenantSlug.PLATAFORMA)
-                .stream()
-                .map(t -> resumen(t, null, null))
+    private static final Set<String> ESTADOS = Set.of(
+            TenantEstado.PENDIENTE_ACTIVACION, TenantEstado.ACTIVO, TenantEstado.RECHAZADO, TenantEstado.SUSPENDIDO);
+
+    /** Consola de plataforma (S2): todas las empresas cliente, o las de un estado; nunca la de plataforma. */
+    public List<TenantResumenResponse> listar(String estado) {
+        List<Tenant> tenants;
+        if (estado == null || estado.isBlank()) {
+            tenants = tenantRepository.findBySlugNotOrderByNombreEmpresaAsc(TenantSlug.PLATAFORMA);
+        } else {
+            String filtro = estado.trim().toUpperCase(java.util.Locale.ROOT);
+            if (!ESTADOS.contains(filtro)) {
+                throw new DomainException(400, "Estado de empresa no válido", "estado");
+            }
+            tenants = tenantRepository.findByEstadoAndSlugNotOrderByNombreEmpresaAsc(filtro, TenantSlug.PLATAFORMA);
+        }
+        return tenants.stream()
+                .map(t -> resumen(t, emailDe(t.getRegistradoPor()), null))
                 .toList();
+    }
+
+    /** S2: la empresa pasa a ACTIVO y quien la registró a SuperAdmin ACTIVO, con sus claims en Cognito. */
+    @Transactional
+    public TenantResumenResponse activar(String tenantId) {
+        Tenant tenant = pendienteDeActivacion(tenantId);
+        tenant.cambiarEstado(TenantEstado.ACTIVO);
+        tenantRepository.save(tenant);
+        Usuario registrante = registranteDe(tenant);
+        String cognitoError = null;
+        if (registrante != null) {
+            registrante.setEstado("ACTIVO");
+            registrante.setRol("SuperAdmin");
+            registrante.setActivo(true);
+            usuarioRepository.saveAndFlush(registrante);
+            cognitoError = cognitoProvisionService.actualizar(registrante);
+        }
+        auditLogService.registrar(tenant.getId(), tenantContext.current().userId(), "Tenant", tenant.getId(),
+                "ActivacionEmpresa", TenantEstado.PENDIENTE_ACTIVACION, TenantEstado.ACTIVO);
+        return resumen(tenant, registrante != null ? registrante.getEmail() : null, cognitoError);
+    }
+
+    /** S2: la empresa pasa a RECHAZADO y quien la registró a RECHAZADO, con el motivo en la auditoría. */
+    @Transactional
+    public TenantResumenResponse rechazar(String tenantId, String motivo) {
+        Tenant tenant = pendienteDeActivacion(tenantId);
+        tenant.cambiarEstado(TenantEstado.RECHAZADO);
+        tenantRepository.save(tenant);
+        Usuario registrante = registranteDe(tenant);
+        if (registrante != null) {
+            registrante.setEstado("RECHAZADO");
+            registrante.setActivo(false);
+            usuarioRepository.saveAndFlush(registrante);
+        }
+        auditLogService.registrar(tenant.getId(), tenantContext.current().userId(), "Tenant", tenant.getId(),
+                "RechazoEmpresa", TenantEstado.PENDIENTE_ACTIVACION, TenantEstado.RECHAZADO + "|" + motivo.trim());
+        return resumen(tenant, registrante != null ? registrante.getEmail() : null, null);
+    }
+
+    private Tenant pendienteDeActivacion(String tenantId) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .filter(t -> !TenantSlug.PLATAFORMA.equals(t.getSlug()))
+                .orElseThrow(() -> new DomainException(404, "Empresa no encontrada"));
+        if (!TenantEstado.PENDIENTE_ACTIVACION.equals(tenant.getEstado())) {
+            throw new DomainException(409, "La empresa no está pendiente de activación", "estado");
+        }
+        return tenant;
+    }
+
+    /** El registrante solo se toca si su fila sigue apuntando a esta empresa. */
+    private Usuario registranteDe(Tenant tenant) {
+        if (tenant.getRegistradoPor() == null) {
+            return null;
+        }
+        return usuarioRepository.findById(tenant.getRegistradoPor())
+                .filter(u -> tenant.getId().equals(u.getTenantId()))
+                .orElse(null);
+    }
+
+    private String emailDe(String usuarioId) {
+        if (usuarioId == null) {
+            return null;
+        }
+        return usuarioRepository.findById(usuarioId).map(Usuario::getEmail).orElse(null);
     }
 }

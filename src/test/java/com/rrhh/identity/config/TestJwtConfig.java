@@ -31,6 +31,8 @@ import java.util.Map;
  *  - "postulante"       : Google sin empresa que pide acceso por RUT (Pablo Postulante).
  *  - "postulante2"      : otro Google sin empresa, para el flujo pedir acceso y ser asignado.
  *  - "postulante3"      : otro Google sin empresa, para ver su solicitud pendiente en /auth/me.
+ *  - "google-<x>"       : Google sin empresa propio de cada prueba (sub cognito-x, <x>@gmail.com),
+ *                         para no compartir filas entre clases de prueba sobre la misma base H2.
  */
 @TestConfiguration
 public class TestJwtConfig {
@@ -111,8 +113,19 @@ public class TestJwtConfig {
                         .claim("name", "Pedro Postulante")
                         .claim("cognito:username", "google_555")
                         .claim("identities", GOOGLE);
-                default -> builder.subject("cognito-unknown")
-                        .claim("email", "desconocido@rrhh.local");
+                default -> {
+                    if (token.startsWith("google-")) {
+                        String id = token.substring("google-".length());
+                        builder.subject("cognito-" + id)
+                                .claim("email", id + "@gmail.com")
+                                .claim("name", "Persona " + id)
+                                .claim("cognito:username", "google_" + id)
+                                .claim("identities", GOOGLE);
+                    } else {
+                        builder.subject("cognito-unknown")
+                                .claim("email", "desconocido@rrhh.local");
+                    }
+                }
             }
 
             return builder.build();

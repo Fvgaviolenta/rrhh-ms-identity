@@ -2,6 +2,7 @@ package com.rrhh.identity.service;
 
 import com.rrhh.identity.dto.request.AsignarUsuarioRequest;
 import com.rrhh.identity.dto.request.CambiarEstadoUsuarioRequest;
+import com.rrhh.identity.dto.request.CrearUsuarioPlataformaRequest;
 import com.rrhh.identity.dto.request.CrearUsuarioRequest;
 import com.rrhh.identity.dto.request.InvitarUsuarioRequest;
 import com.rrhh.identity.dto.request.SolicitarAccesoRequest;
@@ -317,8 +318,8 @@ public class UsuarioService {
 
     public List<UsuarioResponse> listarPorTenantPlataforma(String tenantId) {
         TenantContext.AuthenticatedUser actor = tenantContext.current();
-        if (!Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(actor.role()))) {
-            throw new DomainException(403, "Acceso exclusivo para el operador SaaS");
+        if (!esRolDePlataforma(actor.role())) {
+            throw new DomainException(403, "Acceso exclusivo para la plataforma");
         }
         return usuarioRepository.findByTenantId(tenantId).stream()
                 .map(usuarioMapper::toResponse)
@@ -417,6 +418,52 @@ public class UsuarioService {
 
     /** {@code nueva} es true cuando la solicitud se creó o cambió de empresa (201 y evento). */
     public record ResultadoSolicitud(UsuarioResponse usuario, boolean nueva) {
+    }
+
+    /**
+     * Cuenta creada por el AdminPlataforma (S6): OperadorSaaS sin tenant, o SuperAdmin de un tenant
+     * ACTIVO. Nace ACTIVO sin cognito_sub; la persona entra con Google y /auth/me la vincula por correo.
+     */
+    @Transactional
+    public UsuarioResponse crearUsuarioPlataforma(CrearUsuarioPlataformaRequest request) {
+        TenantContext.AuthenticatedUser actor = tenantContext.current();
+        String rol = request.rol().trim();
+        String tenantId = request.tenantId() == null || request.tenantId().isBlank() ? null : request.tenantId().trim();
+        if ("OperadorSaaS".equals(rol)) {
+            if (tenantId != null) {
+                throw new DomainException(400, "Un OperadorSaaS no pertenece a una empresa", "tenant_id");
+            }
+        } else if ("SuperAdmin".equals(rol)) {
+            if (tenantId == null) {
+                throw new DomainException(400, "La empresa es obligatoria para un SuperAdmin", "tenant_id");
+            }
+            boolean activa = tenantRepository.findById(tenantId)
+                    .filter(t -> TenantEstado.ACTIVO.equals(t.getEstado()))
+                    .filter(t -> !TenantSlug.PLATAFORMA.equals(t.getSlug()))
+                    .isPresent();
+            if (!activa) {
+                throw new DomainException(400, "La empresa no existe o no está activa", "tenant_id");
+            }
+        } else {
+            throw new DomainException(400, "Rol no permitido: solo OperadorSaaS o SuperAdmin", "rol");
+        }
+        String email = request.email().trim().toLowerCase();
+        if (usuarioRepository.findByEmailIgnoreCase(email).isPresent()) {
+            throw new DomainException(409, "Ya existe una cuenta con ese correo", "email");
+        }
+        Usuario usuario = new Usuario();
+        usuario.setId(UUID.randomUUID().toString());
+        usuario.setEmail(email);
+        usuario.setNombre(request.nombre().trim());
+        usuario.setRol(rol);
+        usuario.setTenantId(tenantId);
+        usuario.setEstado(ESTADO_ACTIVO);
+        usuario.setActivo(true);
+        usuario.setCreadoEn(Instant.now());
+        usuarioRepository.saveAndFlush(usuario);
+        auditLogService.registrar(tenantId, actor.userId(), "Usuario", usuario.getId(), "CreacionUsuarioPlataforma",
+                null, email + "|" + rol);
+        return usuarioMapper.toResponse(usuario);
     }
 
     @Transactional
