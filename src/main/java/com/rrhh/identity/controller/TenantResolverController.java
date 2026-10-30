@@ -19,7 +19,7 @@ public class TenantResolverController {
     }
 
     @GetMapping("/resolver")
-    public ApiResponse<TenantResolverResponse> resolver(@RequestParam("nombre") String nombre) {
-        return ApiResponse.ok(tenantService.resolver(nombre), "Empresa encontrada");
+    public ApiResponse<TenantResolverResponse> resolver(@RequestParam(value = "rut", required = false) String rut) {
+        return ApiResponse.ok(tenantService.resolverPorRut(rut), "Empresa encontrada");
     }
 }

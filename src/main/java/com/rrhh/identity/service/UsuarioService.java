@@ -11,6 +11,7 @@ import com.rrhh.identity.exception.DomainException;
 import com.rrhh.identity.mapper.UsuarioMapper;
 import com.rrhh.identity.model.AuditLog;
 import com.rrhh.identity.model.Tenant;
+import com.rrhh.identity.model.TenantEstado;
 import com.rrhh.identity.model.Usuario;
 import com.rrhh.identity.repository.AuditLogRepository;
 import com.rrhh.identity.repository.RolRepository;
@@ -25,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Set;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -33,6 +35,7 @@ public class UsuarioService {
     private static final String ESTADO_ACTIVO = "ACTIVO";
     private static final String ESTADO_PENDIENTE = "PENDIENTE";
     private static final String ESTADO_INVITADO = "INVITADO";
+    private static final String ESTADO_RECHAZADO = "RECHAZADO";
     public static final String HEADER_EMPRESA_SLUG = "X-Empresa-Slug";
 
     private final UsuarioRepository usuarioRepository;
@@ -42,6 +45,8 @@ public class UsuarioService {
     private final TenantContext tenantContext;
     private final UsuarioMapper usuarioMapper;
     private final CognitoProvisionService cognitoProvisionService;
+    private final TenantService tenantService;
+    private final OutboxPublisher outboxPublisher;
 
     public UsuarioService(
             UsuarioRepository usuarioRepository,
@@ -50,7 +55,9 @@ public class UsuarioService {
             AuditLogRepository auditLogRepository,
             TenantContext tenantContext,
             UsuarioMapper usuarioMapper,
-            CognitoProvisionService cognitoProvisionService
+            CognitoProvisionService cognitoProvisionService,
+            TenantService tenantService,
+            OutboxPublisher outboxPublisher
     ) {
         this.usuarioRepository = usuarioRepository;
         this.tenantRepository = tenantRepository;
@@ -59,6 +66,8 @@ public class UsuarioService {
         this.tenantContext = tenantContext;
         this.usuarioMapper = usuarioMapper;
         this.cognitoProvisionService = cognitoProvisionService;
+        this.tenantService = tenantService;
+        this.outboxPublisher = outboxPublisher;
     }
 
     @Transactional
@@ -304,34 +313,83 @@ public class UsuarioService {
                 .toList();
     }
 
+    /**
+     * Solicitud de acceso a una empresa por su RUT (S3/S5). Una solicitud nueva, o que cambia de
+     * empresa, queda PENDIENTE en el tenant destino y registra {@code acceso.solicitado} en el outbox
+     * dentro de la misma transacción.
+     */
     @Transactional
-    public UsuarioResponse solicitarAcceso(SolicitarAccesoRequest request) {
-        Tenant tenant = tenantRepository.findBySlug(TenantSlug.normalize(request.tenantSlug()))
-                .orElseThrow(() -> new DomainException(404, "La empresa no se encuentra en nuestra base de datos", "tenant_slug"));
+    public ResultadoSolicitud solicitarAcceso(SolicitarAccesoRequest request) {
+        Tenant tenant = tenantService.tenantActivoPorRut(request.rutEmpresa());
         TenantContext.AuthenticatedUser actor = tenantContext.current();
         if (actor.email() == null || actor.email().isBlank()) {
             throw new DomainException(400, "Google no entregó un correo válido para solicitar acceso", "email");
         }
 
         Usuario usuario = actor.cognitoSub() == null
-                ? usuarioRepository.findByEmailIgnoreCase(actor.email()).orElse(null)
+                ? null
                 : usuarioRepository.findByCognitoSub(actor.cognitoSub()).orElse(null);
+        if (usuario == null) {
+            usuario = usuarioRepository.findByEmailIgnoreCase(actor.email()).orElse(null);
+            if (usuario != null && usuario.getCognitoSub() != null && actor.cognitoSub() != null
+                    && !actor.cognitoSub().equals(usuario.getCognitoSub())) {
+                throw new DomainException(403, "Este correo ya está vinculado a otra identidad", "email");
+            }
+        }
         if (usuario == null) {
             usuario = new Usuario();
             usuario.setId(UUID.randomUUID().toString());
             usuario.setCreadoEn(Instant.now());
-            usuario.setActivo(true);
             usuario.setEmail(actor.email().toLowerCase());
         }
-        if (usuario.getTenantId() != null && !tenant.getId().equals(usuario.getTenantId())) {
-            throw new DomainException(409, "Este correo ya está asociado a otra empresa", "email");
+
+        String autoridad = Roles.authorityFromClaim(usuario.getRol());
+        boolean rolDePlataforma = Roles.OPERADOR_SAAS.equals(autoridad) || Roles.ADMIN_PLATAFORMA.equals(autoridad);
+        boolean perteneceAEmpresa = usuario.getTenantId() != null
+                && (ESTADO_ACTIVO.equals(usuario.getEstado()) || ESTADO_INVITADO.equals(usuario.getEstado()));
+        if (perteneceAEmpresa || rolDePlataforma) {
+            throw new DomainException(409, "Tu cuenta ya pertenece a una empresa", "rut_empresa");
+        }
+        boolean mismoTenant = tenant.getId().equals(usuario.getTenantId());
+        if (ESTADO_PENDIENTE.equals(usuario.getEstado()) && usuario.getTenantId() != null) {
+            boolean registranteEnRevision = tenantRepository.findById(usuario.getTenantId())
+                    .map(t -> TenantEstado.PENDIENTE_ACTIVACION.equals(t.getEstado()))
+                    .orElse(false);
+            if (registranteEnRevision) {
+                throw new DomainException(409, "Tu cuenta ya está asociada a una empresa", "rut_empresa");
+            }
+            if (mismoTenant) {
+                return new ResultadoSolicitud(usuarioMapper.toResponse(usuario), false);
+            }
+        }
+        if (ESTADO_RECHAZADO.equals(usuario.getEstado()) && mismoTenant) {
+            throw new DomainException(409, "Tu solicitud fue rechazada por esta empresa", "rut_empresa");
+        }
+
+        if (usuario.getCognitoSub() == null) {
+            usuario.setCognitoSub(actor.cognitoSub());
+        }
+        if (actor.cognitoUsername() != null) {
+            usuario.setCognitoUsername(actor.cognitoUsername());
+        }
+        if (actor.name() != null && !actor.name().isBlank()) {
+            usuario.setNombre(actor.name());
         }
         usuario.setTenantId(tenant.getId());
-        usuario.setCognitoSub(actor.cognitoSub());
-        usuario.setNombre(actor.name());
         usuario.setRol(null);
         usuario.setEstado(ESTADO_PENDIENTE);
-        return usuarioMapper.toResponse(usuarioRepository.saveAndFlush(usuario));
+        usuario.setActivo(true);
+        usuario = usuarioRepository.saveAndFlush(usuario);
+        String nombre = usuario.getNombre() != null && !usuario.getNombre().isBlank()
+                ? usuario.getNombre()
+                : usuario.getEmail();
+        outboxPublisher.registrar("acceso.solicitado", tenant.getId(), usuario.getId(),
+                Map.of("usuarioId", usuario.getId(), "email", usuario.getEmail(), "nombre", nombre));
+        return new ResultadoSolicitud(usuarioMapper.toResponse(usuario), true);
+    }
+
+    /** {@code nueva} es true cuando la solicitud se creó o cambió de empresa (201 y evento). */
+    public record ResultadoSolicitud(UsuarioResponse usuario, boolean nueva) {
     }
 
     @Transactional

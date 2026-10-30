@@ -10,8 +10,6 @@ public interface TenantRepository extends JpaRepository<Tenant, String> {
 
     Optional<Tenant> findBySlug(String slug);
 
-    Optional<Tenant> findByNombreEmpresaIgnoreCase(String nombreEmpresa);
-
     List<Tenant> findByActivoTrueAndSlugNotOrderByNombreEmpresaAsc(String slug);
 
     Optional<Tenant> findByRutEmpresa(String rutEmpresa);

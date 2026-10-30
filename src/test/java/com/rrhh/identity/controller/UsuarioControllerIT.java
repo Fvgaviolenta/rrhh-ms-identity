@@ -3,6 +3,7 @@ package com.rrhh.identity.controller;
 import com.jayway.jsonpath.JsonPath;
 import com.rrhh.identity.IdentityApplication;
 import com.rrhh.identity.config.TestJwtConfig;
+import com.rrhh.identity.repository.OutboxEventRepository;
 import com.rrhh.identity.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +14,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -30,6 +33,9 @@ class UsuarioControllerIT {
 
     @Autowired
     private UsuarioRepository usuarioRepository;
+
+    @Autowired
+    private OutboxEventRepository outboxEventRepository;
 
     @Test
     void meDevuelveClaimsDelToken() throws Exception {
@@ -209,17 +215,52 @@ class UsuarioControllerIT {
     }
 
     @Test
-    void resolverEmpresaPublico() throws Exception {
-        mockMvc.perform(get("/api/v1/tenants/resolver").param("nombre", "Empresa Demo SpA"))
+    void resolverPorRut() throws Exception {
+        mockMvc.perform(get("/api/v1/tenants/resolver").param("rut", "76.123.456-0"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datos.existe").value(true))
-                .andExpect(jsonPath("$.datos.slug").value("empresa-demo-spa"));
+                .andExpect(jsonPath("$.datos.slug").value("empresa-demo-spa"))
+                .andExpect(jsonPath("$.datos.nombre_empresa").value("Empresa Demo SpA"));
+        mockMvc.perform(get("/api/v1/tenants/resolver").param("rut", "11.111.111-1"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.mensaje").value("La empresa no está registrada en el sistema"));
+        mockMvc.perform(get("/api/v1/tenants/resolver").param("rut", "76.123.456-7"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.mensaje").value("El RUT de la empresa no es válido"));
+        mockMvc.perform(get("/api/v1/tenants/resolver").param("rut", "00.000.000-0"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
-    void resolverEmpresaInexistente() throws Exception {
-        mockMvc.perform(get("/api/v1/tenants/resolver").param("nombre", "No Existe SpA"))
+    void solicitudPorRutQuedaPendienteYEmiteEvento() throws Exception {
+        long antes = outboxEventRepository.count();
+        mockMvc.perform(post("/api/v1/auth/access-requests").header("Authorization", "Bearer postulante")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rut_empresa\":\"76123456-0\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.datos.tenant_id").value("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"))
+                .andExpect(jsonPath("$.datos.estado").value("PENDIENTE"));
+        assertEquals(antes + 1, outboxEventRepository.count());
+        mockMvc.perform(post("/api/v1/auth/access-requests").header("Authorization", "Bearer postulante")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rut_empresa\":\"76.123.456-0\"}"))
+                .andExpect(status().isOk());
+        assertEquals(antes + 1, outboxEventRepository.count());
+        assertEquals("google_333", usuarioRepository.findByCognitoSub("cognito-post-1").orElseThrow().getCognitoUsername());
+    }
+
+    @Test
+    void solicitudARutInexistenteNoCreaUsuario() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/access-requests").header("Authorization", "Bearer registrante")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rut_empresa\":\"11111111-1\"}"))
                 .andExpect(status().isNotFound());
+        assertTrue(usuarioRepository.findByCognitoSub("cognito-reg-1").isEmpty());
+    }
+
+    @Test
+    void activoNoPuedePedirAcceso() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/access-requests").header("Authorization", "Bearer admin")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rut_empresa\":\"76123456-0\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.mensaje").value("Tu cuenta ya pertenece a una empresa"));
     }
 
     @Test

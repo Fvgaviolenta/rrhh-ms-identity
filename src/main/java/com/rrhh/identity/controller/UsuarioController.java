@@ -49,8 +49,13 @@ public class UsuarioController {
     }
 
     @PostMapping("/auth/access-requests")
-    public ApiResponse<UsuarioResponse> solicitarAcceso(@Valid @RequestBody SolicitarAccesoRequest request) {
-        return ApiResponse.created(usuarioService.solicitarAcceso(request), "Solicitud de acceso enviada");
+    public ResponseEntity<ApiResponse<UsuarioResponse>> solicitarAcceso(@Valid @RequestBody SolicitarAccesoRequest request) {
+        UsuarioService.ResultadoSolicitud resultado = usuarioService.solicitarAcceso(request);
+        if (resultado.nueva()) {
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ApiResponse.created(resultado.usuario(), "Solicitud de acceso enviada"));
+        }
+        return ResponseEntity.ok(ApiResponse.ok(resultado.usuario(), "La solicitud ya estaba enviada a esta empresa"));
     }
 
     @PostMapping("/usuarios/invitar")
