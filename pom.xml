@@ -22,6 +22,8 @@
         <springdoc.version>2.6.0</springdoc.version>
         <lombok.version>1.18.42</lombok.version>
         <byte-buddy.version>1.17.8</byte-buddy.version>
+        <!-- JDK 23+ ya no ejecuta procesadores de anotaciones implicitos: sin esto Lombok no corre en un build limpio. -->
+        <maven.compiler.proc>full</maven.compiler.proc>
     </properties>
 
     <dependencies>
