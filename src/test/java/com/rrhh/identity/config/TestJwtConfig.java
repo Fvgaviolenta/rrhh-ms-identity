@@ -29,6 +29,8 @@ import java.util.Map;
  *  - "admin-plataforma" : owner-google ya con custom:role AdminPlataforma.
  *  - "registrante"      : Google sin empresa que registra una (Rita Registrante).
  *  - "postulante"       : Google sin empresa que pide acceso por RUT (Pablo Postulante).
+ *  - "postulante2"      : otro Google sin empresa, para el flujo pedir acceso y ser asignado.
+ *  - "postulante3"      : otro Google sin empresa, para ver su solicitud pendiente en /auth/me.
  */
 @TestConfiguration
 public class TestJwtConfig {
@@ -98,6 +100,16 @@ public class TestJwtConfig {
                         .claim("email", "postulante@gmail.com")
                         .claim("name", "Pablo Postulante")
                         .claim("cognito:username", "google_333")
+                        .claim("identities", GOOGLE);
+                case "postulante2" -> builder.subject("cognito-post-2")
+                        .claim("email", "postulante2@gmail.com")
+                        .claim("name", "Paula Postulante")
+                        .claim("cognito:username", "google_444")
+                        .claim("identities", GOOGLE);
+                case "postulante3" -> builder.subject("cognito-post-3")
+                        .claim("email", "postulante3@gmail.com")
+                        .claim("name", "Pedro Postulante")
+                        .claim("cognito:username", "google_555")
                         .claim("identities", GOOGLE);
                 default -> builder.subject("cognito-unknown")
                         .claim("email", "desconocido@rrhh.local");

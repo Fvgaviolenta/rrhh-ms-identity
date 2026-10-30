@@ -18,5 +18,7 @@ spring:
       enabled: false
 
 rrhh:
+  platform:
+    admin-email: owner@gmail.com
   tenant-resolver:
     delay-ms: 0

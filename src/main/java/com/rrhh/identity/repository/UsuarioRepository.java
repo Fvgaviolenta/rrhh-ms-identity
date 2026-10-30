@@ -24,7 +24,7 @@ public interface UsuarioRepository extends JpaRepository<Usuario, String> {
 
     Optional<Usuario> findByTrabajadorIdAndTenantId(String trabajadorId, String tenantId);
 
-    List<Usuario> findByEstadoAndTenantIdIsNull(String estado);
+    List<Usuario> findByEstadoAndTenantId(String estado, String tenantId);
 
     boolean existsByTenantIdAndEmail(String tenantId, String email);
 

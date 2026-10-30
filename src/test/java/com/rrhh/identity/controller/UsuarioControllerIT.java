@@ -3,6 +3,7 @@ package com.rrhh.identity.controller;
 import com.jayway.jsonpath.JsonPath;
 import com.rrhh.identity.IdentityApplication;
 import com.rrhh.identity.config.TestJwtConfig;
+import com.rrhh.identity.model.Usuario;
 import com.rrhh.identity.repository.OutboxEventRepository;
 import com.rrhh.identity.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -79,59 +82,116 @@ class UsuarioControllerIT {
     }
 
     @Test
-    void meAutoProvisionaUsuarioPendiente() throws Exception {
-        // Primer ingreso del usuario federado: se registra como PENDIENTE.
-        String primero = mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer pending"))
+    void meSinFilaLocalEsNoRegistradoYNoInserta() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer pending"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.datos.email").value("nuevo.google@gmail.com"))
-                .andExpect(jsonPath("$.datos.nombre").value("Nuevo Google"))
-                .andExpect(jsonPath("$.datos.estado").value("PENDIENTE"))
+                .andExpect(jsonPath("$.datos.estado").value("NO_REGISTRADO"))
                 .andExpect(jsonPath("$.datos.pendiente").value(true))
-                .andExpect(jsonPath("$.datos.codigo").value(org.hamcrest.Matchers.startsWith("USR-")))
-                .andReturn().getResponse().getContentAsString();
-
-        // Segundo ingreso: idempotente, mismo usuario (mismo id).
-        String segundo = mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer pending"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.datos.estado").value("PENDIENTE"))
-                .andReturn().getResponse().getContentAsString();
-
-        String idPrimero = JsonPath.read(primero, "$.datos.user_id");
-        String idSegundo = JsonPath.read(segundo, "$.datos.user_id");
-        org.junit.jupiter.api.Assertions.assertEquals(idPrimero, idSegundo);
-        org.junit.jupiter.api.Assertions.assertTrue(usuarioRepository.findByCognitoSub("cognito-google-123").isPresent());
-        org.junit.jupiter.api.Assertions.assertEquals(
-                "nuevo.google@gmail.com",
-                usuarioRepository.findByCognitoSub("cognito-google-123").orElseThrow().getEmail()
-        );
+                .andExpect(jsonPath("$.datos.tenant_id").doesNotExist());
+        assertTrue(usuarioRepository.findByCognitoSub("cognito-google-123").isEmpty());
     }
 
     @Test
-    void meAutoProvisionaUsuarioCognitoConTenantYRolActivo() throws Exception {
+    void meConClaimsDeTenantSinFilaLocalEsNoRegistradoYNoInserta() throws Exception {
         mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer manual-admin"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.datos.email").value("adminempresademospa@mail.com"))
-                .andExpect(jsonPath("$.datos.cognito_sub").value("cognito-admin-123"))
-                .andExpect(jsonPath("$.datos.tenant_id").value("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"))
-                .andExpect(jsonPath("$.datos.role").value("Admin de RRHH"))
-                .andExpect(jsonPath("$.datos.estado").value("ACTIVO"))
-                .andExpect(jsonPath("$.datos.pendiente").value(false));
-
-        org.junit.jupiter.api.Assertions.assertTrue(
-                usuarioRepository.findByCognitoSub("cognito-admin-123").isPresent()
-        );
+                .andExpect(jsonPath("$.datos.estado").value("NO_REGISTRADO"))
+                .andExpect(jsonPath("$.datos.tenant_id").doesNotExist())
+                .andExpect(jsonPath("$.datos.role").doesNotExist());
+        assertTrue(usuarioRepository.findByCognitoSub("cognito-admin-123").isEmpty());
     }
 
     @Test
-    void adminAsignaTenantYRolAUsuarioPendiente() throws Exception {
-        // Provisiona el pendiente.
-        String me = mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer pending2"))
+    void pendienteLegacySinTenantEsNoRegistradoEInvisible() throws Exception {
+        Usuario legacy = new Usuario();
+        legacy.setId("legacy-1");
+        legacy.setEmail("asignar.google@gmail.com");
+        legacy.setCognitoSub("cognito-google-456");
+        legacy.setEstado("PENDIENTE");
+        legacy.setActivo(true);
+        legacy.setCreadoEn(Instant.now());
+        usuarioRepository.saveAndFlush(legacy);
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer pending2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos.estado").value("NO_REGISTRADO"));
+        mockMvc.perform(get("/api/v1/usuarios/pendientes").header("Authorization", "Bearer admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos[?(@.id=='legacy-1')]").isEmpty());
+        mockMvc.perform(post("/api/v1/usuarios/legacy-1/asignar").header("Authorization", "Bearer admin")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rol\":\"Trabajador\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void meDeSolicitudPendienteTraeEmpresa() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/access-requests").header("Authorization", "Bearer postulante3")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rut_empresa\":\"76123456-0\"}"))
+                .andExpect(status().is2xxSuccessful());
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer postulante3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datos.estado").value("PENDIENTE"))
-                .andReturn().getResponse().getContentAsString();
-        String usuarioId = JsonPath.read(me, "$.datos.user_id");
+                .andExpect(jsonPath("$.datos.tenant_estado").value("ACTIVO"))
+                .andExpect(jsonPath("$.datos.tenant_nombre").value("Empresa Demo SpA"));
+    }
 
-        // El admin lo asigna a su tenant con un rol.
+    @Test
+    void ownerGoogleSePromueveAdminPlataformaYNativoNo() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer owner-google"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos.role").value("AdminPlataforma"))
+                .andExpect(jsonPath("$.datos.estado").value("ACTIVO"))
+                .andExpect(jsonPath("$.datos.pendiente").value(false));
+        Usuario owner = usuarioRepository.findByCognitoSub("cognito-owner").orElseThrow();
+        assertEquals("AdminPlataforma", owner.getRol());
+        assertEquals("google_111", owner.getCognitoUsername());
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer owner-native"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos.estado").value("NO_REGISTRADO"));
+    }
+
+    @Test
+    void cuentaCreadaPorRrhhConIdentificadorProvisionalSeVinculaEnMe() throws Exception {
+        // provision() guarda el username de Cognito (el correo) como cognito_sub provisional.
+        Usuario creada = new Usuario();
+        creada.setId("provisional-1");
+        creada.setTenantId("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        creada.setEmail("trab@rrhh.local");
+        creada.setCognitoSub("trab@rrhh.local");
+        creada.setRol("Trabajador");
+        creada.setEstado("ACTIVO");
+        creada.setActivo(true);
+        creada.setCreadoEn(Instant.now());
+        usuarioRepository.saveAndFlush(creada);
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer trabajador"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos.estado").value("ACTIVO"))
+                .andExpect(jsonPath("$.datos.role").value("Trabajador"))
+                .andExpect(jsonPath("$.datos.tenant_id").value("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+        assertEquals("cognito-trab", usuarioRepository.findById("provisional-1").orElseThrow().getCognitoSub());
+    }
+
+    @Test
+    void pendientesGlobalesYaNoExiste() throws Exception {
+        mockMvc.perform(get("/api/v1/plataforma/usuarios/pendientes").header("Authorization", "Bearer operador"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void adminAsignaRolASolicitudPendienteDeSuTenant() throws Exception {
+        String solicitud = mockMvc.perform(post("/api/v1/auth/access-requests")
+                        .header("Authorization", "Bearer postulante2")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rut_empresa\":\"76123456-0\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String usuarioId = JsonPath.read(solicitud, "$.datos.id");
+
+        mockMvc.perform(get("/api/v1/usuarios/pendientes").header("Authorization", "Bearer otro"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos[?(@.id=='" + usuarioId + "')]").isEmpty());
+        mockMvc.perform(post("/api/v1/usuarios/" + usuarioId + "/asignar").header("Authorization", "Bearer otro")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rol\":\"Trabajador\"}"))
+                .andExpect(status().isNotFound());
+
         mockMvc.perform(post("/api/v1/usuarios/" + usuarioId + "/asignar")
                         .header("Authorization", "Bearer admin")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -143,14 +203,14 @@ class UsuarioControllerIT {
                 .andExpect(jsonPath("$.datos.rol").value("Trabajador"))
                 .andExpect(jsonPath("$.datos.estado").value("ACTIVO"));
 
-        // Reasignar el mismo usuario ya no es posible (ya tiene tenant).
+        // Ya no es una solicitud pendiente: reasignarla responde como no encontrada.
         mockMvc.perform(post("/api/v1/usuarios/" + usuarioId + "/asignar")
                         .header("Authorization", "Bearer admin")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"rol":"Jefatura"}
                                 """))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
     }
 
     @Test

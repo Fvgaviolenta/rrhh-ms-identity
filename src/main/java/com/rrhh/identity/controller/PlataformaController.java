@@ -31,12 +31,6 @@ public class PlataformaController {
         return ApiResponse.ok(tenantService.listarClientes(), "Empresas cliente");
     }
 
-    @GetMapping("/usuarios/pendientes")
-    @PreAuthorize("hasRole('OPERADOR_SAAS')")
-    public ApiResponse<List<UsuarioResponse>> pendientes() {
-        return ApiResponse.ok(usuarioService.listarPendientesGlobales(), "Usuarios pendientes globales");
-    }
-
     @GetMapping("/tenants/{tenant_id}/usuarios")
     @PreAuthorize("hasRole('OPERADOR_SAAS')")
     public ApiResponse<List<UsuarioResponse>> usuariosPorTenant(@PathVariable("tenant_id") String tenantId) {

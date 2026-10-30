@@ -11,6 +11,8 @@ public record MeResponse(
         String estado,
         String codigo,
         boolean pendiente,
-        String tenantSlug
+        String tenantSlug,
+        String tenantEstado,
+        String tenantNombre
 ) {
 }

@@ -36,6 +36,8 @@ public class UsuarioService {
     private static final String ESTADO_PENDIENTE = "PENDIENTE";
     private static final String ESTADO_INVITADO = "INVITADO";
     private static final String ESTADO_RECHAZADO = "RECHAZADO";
+    private static final String ESTADO_NO_REGISTRADO = "NO_REGISTRADO";
+    private static final String ROL_ADMIN_PLATAFORMA = "AdminPlataforma";
     public static final String HEADER_EMPRESA_SLUG = "X-Empresa-Slug";
 
     private final UsuarioRepository usuarioRepository;
@@ -47,6 +49,7 @@ public class UsuarioService {
     private final CognitoProvisionService cognitoProvisionService;
     private final TenantService tenantService;
     private final OutboxPublisher outboxPublisher;
+    private final AdminPlataformaBootstrap adminPlataformaBootstrap;
 
     public UsuarioService(
             UsuarioRepository usuarioRepository,
@@ -57,7 +60,8 @@ public class UsuarioService {
             UsuarioMapper usuarioMapper,
             CognitoProvisionService cognitoProvisionService,
             TenantService tenantService,
-            OutboxPublisher outboxPublisher
+            OutboxPublisher outboxPublisher,
+            AdminPlataformaBootstrap adminPlataformaBootstrap
     ) {
         this.usuarioRepository = usuarioRepository;
         this.tenantRepository = tenantRepository;
@@ -68,6 +72,7 @@ public class UsuarioService {
         this.cognitoProvisionService = cognitoProvisionService;
         this.tenantService = tenantService;
         this.outboxPublisher = outboxPublisher;
+        this.adminPlataformaBootstrap = adminPlataformaBootstrap;
     }
 
     @Transactional
@@ -87,83 +92,126 @@ public class UsuarioService {
         if (local == null && actor.email() != null && esperado != null && !TenantSlug.PLATAFORMA.equals(esperado.getSlug())) {
             local = vincularInvitacion(actor, esperado);
         }
-        if (local == null && actor.tenantId() != null && actor.email() != null) {
-            local = usuarioRepository.findByTenantIdAndEmail(actor.tenantId(), actor.email()).orElse(null);
-        }
         if (local == null && actor.email() != null) {
-            local = usuarioRepository.findByEmailIgnoreCase(actor.email()).orElse(null);
-            if (local != null && local.getCognitoSub() != null
-                    && actor.cognitoSub() != null
-                    && !actor.cognitoSub().equals(local.getCognitoSub())) {
-                throw new DomainException(403, "Este correo ya está vinculado a otra identidad", "email");
-            }
-            if (local != null && local.getCognitoSub() == null) {
-                local.setCognitoSub(actor.cognitoSub());
-                local = usuarioRepository.saveAndFlush(local);
-            }
+            local = vincularPorEmail(actor);
         }
-        if (local == null && actor.email() != null) {
-            usuarioRepository.findByEmailIgnoreCase(actor.email()).ifPresent(otro -> {
-                if (esperado != null && !esperado.getId().equals(otro.getTenantId())
-                        && !TenantSlug.PLATAFORMA.equals(esperado.getSlug())) {
-                    throw new DomainException(403, "Este usuario no pertenece a la empresa indicada", "email");
-                }
-            });
-        }
-        if (local == null && actor.cognitoSub() != null
-                && !Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(actor.role()))) {
-            local = provisionarPendiente(actor);
+        if (adminPlataformaBootstrap.corresponde(actor)) {
+            local = promoverAdminPlataforma(actor, local);
         }
 
         if (esperado != null && actor.tenantId() != null
                 && !esperado.getId().equals(actor.tenantId())
-                && !Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(actor.role()))) {
+                && !esRolDePlataforma(actor.role())) {
             throw new DomainException(403, "Este usuario no pertenece a la empresa indicada");
         }
 
-        if (local != null) {
-            if ((local.getNombre() == null || local.getNombre().isBlank())
-                    && actor.name() != null && !actor.name().isBlank()) {
-                local.setNombre(actor.name());
-                usuarioRepository.save(local);
-            }
-            validarSlugContraUsuario(esperado, local);
-            return toMeResponse(local, actor);
+        // S4: sin fila propia, o con una fila sin empresa y sin rol de plataforma (incluye las
+        // PENDIENTE antiguas sin tenant), la cuenta no está asociada a ninguna empresa.
+        if (local == null || (local.getTenantId() == null && !esRolDePlataforma(local.getRol()))) {
+            return noRegistrado(actor);
         }
-
-        if (Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(actor.role()))) {
-            if (esperado != null && !TenantSlug.PLATAFORMA.equals(esperado.getSlug())) {
-                throw new DomainException(403, "El operador de plataforma solo ingresa por el acceso plataforma");
-            }
-            return new MeResponse(
-                    actor.userId(),
-                    null,
-                    actor.email(),
-                    actor.name(),
-                    "OperadorSaaS",
-                    null,
-                    actor.cognitoSub(),
-                    ESTADO_ACTIVO,
-                    null,
-                    false,
-                    TenantSlug.PLATAFORMA
-            );
+        if ((local.getNombre() == null || local.getNombre().isBlank())
+                && actor.name() != null && !actor.name().isBlank()) {
+            local.setNombre(actor.name());
+            usuarioRepository.save(local);
         }
+        validarSlugContraUsuario(esperado, local);
+        return toMeResponse(local, actor);
+    }
 
-        boolean pendiente = actor.tenantId() == null || actor.role() == null;
+    /**
+     * Vincula la identidad con una fila creada por un administrador que tiene su correo: sin
+     * cognito_sub, o con el identificador provisional que deja provision() (el username de Cognito,
+     * igual al correo). Si esa fila ya pertenece a otra identidad, esta identidad no tiene fila propia.
+     */
+    private Usuario vincularPorEmail(TenantContext.AuthenticatedUser actor) {
+        Usuario porEmail = usuarioRepository.findByEmailIgnoreCase(actor.email()).orElse(null);
+        if (porEmail == null) {
+            return null;
+        }
+        boolean sinIdentidad = porEmail.getCognitoSub() == null
+                || porEmail.getCognitoSub().equalsIgnoreCase(porEmail.getEmail());
+        if (!sinIdentidad) {
+            return null;
+        }
+        porEmail.setCognitoSub(actor.cognitoSub());
+        if (actor.cognitoUsername() != null) {
+            porEmail.setCognitoUsername(actor.cognitoUsername());
+        }
+        Usuario vinculado = usuarioRepository.saveAndFlush(porEmail);
+        // Los claims custom:* del token aún no existen para esta identidad (S7).
+        cognitoProvisionService.actualizar(vinculado);
+        return vinculado;
+    }
+
+    /**
+     * Única fila que /auth/me crea o promueve (S6): la del AdminPlataforma. Solo escribe y
+     * sincroniza Cognito cuando algo cambió.
+     */
+    private Usuario promoverAdminPlataforma(TenantContext.AuthenticatedUser actor, Usuario local) {
+        Usuario admin = local;
+        if (admin == null) {
+            Usuario porEmail = usuarioRepository.findByEmailIgnoreCase(actor.email()).orElse(null);
+            if (porEmail != null && porEmail.getCognitoSub() != null
+                    && !porEmail.getCognitoSub().equals(actor.cognitoSub())) {
+                // El correo ya es de otra identidad: no se crea una segunda fila con el mismo correo.
+                return null;
+            }
+            admin = porEmail;
+        }
+        if (admin == null) {
+            admin = new Usuario();
+            admin.setId(UUID.randomUUID().toString());
+            admin.setEmail(actor.email().toLowerCase());
+            admin.setNombre(actor.name());
+            admin.setCreadoEn(Instant.now());
+        }
+        boolean yaEsAdmin = ROL_ADMIN_PLATAFORMA.equals(admin.getRol())
+                && admin.getTenantId() == null
+                && ESTADO_ACTIVO.equals(admin.getEstado())
+                && admin.isActivo()
+                && actor.cognitoSub() != null && actor.cognitoSub().equals(admin.getCognitoSub())
+                && (actor.cognitoUsername() == null || actor.cognitoUsername().equals(admin.getCognitoUsername()));
+        if (yaEsAdmin) {
+            return admin;
+        }
+        String anterior = admin.getEstado() + "|" + admin.getTenantId() + "|" + admin.getRol();
+        admin.setRol(ROL_ADMIN_PLATAFORMA);
+        admin.setTenantId(null);
+        admin.setTrabajadorId(null);
+        admin.setEstado(ESTADO_ACTIVO);
+        admin.setActivo(true);
+        admin.setCognitoSub(actor.cognitoSub());
+        if (actor.cognitoUsername() != null) {
+            admin.setCognitoUsername(actor.cognitoUsername());
+        }
+        admin = usuarioRepository.saveAndFlush(admin);
+        cognitoProvisionService.actualizar(admin);
+        auditar(actor, "Usuario", admin.getId(), "PromocionAdminPlataforma", anterior, "null|" + ROL_ADMIN_PLATAFORMA);
+        return admin;
+    }
+
+    private MeResponse noRegistrado(TenantContext.AuthenticatedUser actor) {
         return new MeResponse(
-                actor.userId(),
-                actor.tenantId(),
+                null,
+                null,
                 actor.email(),
                 actor.name(),
-                actor.role(),
-                actor.trabajadorId(),
-                actor.cognitoSub(),
-                pendiente ? ESTADO_PENDIENTE : ESTADO_ACTIVO,
                 null,
-                pendiente,
-                esperado != null ? esperado.getSlug() : null
+                null,
+                actor.cognitoSub(),
+                ESTADO_NO_REGISTRADO,
+                null,
+                true,
+                null,
+                null,
+                null
         );
+    }
+
+    private static boolean esRolDePlataforma(String rol) {
+        String autoridad = Roles.authorityFromClaim(rol);
+        return Roles.OPERADOR_SAAS.equals(autoridad) || Roles.ADMIN_PLATAFORMA.equals(autoridad);
     }
 
     private Usuario vincularInvitacion(TenantContext.AuthenticatedUser actor, Tenant esperado) {
@@ -188,7 +236,12 @@ public class UsuarioService {
         if ((invitacion.getNombre() == null || invitacion.getNombre().isBlank()) && actor.name() != null) {
             invitacion.setNombre(actor.name());
         }
-        return usuarioRepository.saveAndFlush(invitacion);
+        if (actor.cognitoUsername() != null) {
+            invitacion.setCognitoUsername(actor.cognitoUsername());
+        }
+        Usuario vinculada = usuarioRepository.saveAndFlush(invitacion);
+        cognitoProvisionService.actualizar(vinculada);
+        return vinculada;
     }
 
     private Tenant resolverTenantDelSlug(String empresaSlug) {
@@ -204,7 +257,7 @@ public class UsuarioService {
         if (esperado == null) {
             return;
         }
-        boolean operador = Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(local.getRol()));
+        boolean operador = esRolDePlataforma(local.getRol());
         if (operador) {
             if (!TenantSlug.PLATAFORMA.equals(esperado.getSlug())) {
                 throw new DomainException(403, "El operador de plataforma solo ingresa por el acceso plataforma");
@@ -223,7 +276,7 @@ public class UsuarioService {
     }
 
     private MeResponse toMeResponse(Usuario local, TenantContext.AuthenticatedUser actor) {
-        boolean operador = Roles.OPERADOR_SAAS.equals(Roles.authorityFromClaim(local.getRol()));
+        boolean operador = esRolDePlataforma(local.getRol());
         boolean pendiente = ESTADO_PENDIENTE.equals(local.getEstado())
                 || local.getRol() == null
                 || (local.getTenantId() == null && !operador);
@@ -231,10 +284,12 @@ public class UsuarioService {
                 ? local.getNombre()
                 : actor.name();
         String slug = null;
+        Tenant tenant = null;
         if (operador) {
             slug = TenantSlug.PLATAFORMA;
         } else if (local.getTenantId() != null) {
-            slug = tenantRepository.findById(local.getTenantId()).map(Tenant::getSlug).orElse(null);
+            tenant = tenantRepository.findById(local.getTenantId()).orElse(null);
+            slug = tenant != null ? tenant.getSlug() : null;
         }
         return new MeResponse(
                 local.getId(),
@@ -247,30 +302,10 @@ public class UsuarioService {
                 local.getEstado(),
                 UsuarioMapper.formatCodigo(local.getSecuencia()),
                 pendiente,
-                slug
+                slug,
+                tenant != null ? tenant.getEstado() : null,
+                tenant != null ? tenant.getNombreEmpresa() : null
         );
-    }
-
-    private Usuario provisionarPendiente(TenantContext.AuthenticatedUser actor) {
-        return usuarioRepository.findByCognitoSub(actor.cognitoSub()).orElseGet(() -> {
-            Usuario usuario = new Usuario();
-            usuario.setId(UUID.randomUUID().toString());
-            boolean identidadCompleta = actor.tenantId() != null
-                    && actor.role() != null
-                    && tenantRepository.findById(actor.tenantId()).isPresent();
-            usuario.setTenantId(identidadCompleta ? actor.tenantId() : null);
-            usuario.setRol(identidadCompleta ? actor.role() : null);
-            usuario.setEstado(identidadCompleta ? ESTADO_ACTIVO : ESTADO_PENDIENTE);
-            usuario.setEmail(actor.email() != null
-                    ? actor.email().toLowerCase()
-                    : actor.cognitoSub() + "@pendiente.local");
-            usuario.setNombre(actor.name());
-            usuario.setCognitoSub(actor.cognitoSub());
-            usuario.setActivo(true);
-            usuario.setCreadoEn(Instant.now());
-            // saveAndFlush fuerza el INSERT para que @Generated recargue la secuencia (codigo) de inmediato.
-            return usuarioRepository.saveAndFlush(usuario);
-        });
     }
 
     public List<UsuarioResponse> listar() {
@@ -299,16 +334,10 @@ public class UsuarioService {
         return usuarioMapper.toResponse(usuario);
     }
 
+    /** Solo las solicitudes PENDIENTE de la empresa del actor (S4); nunca filas sin tenant. */
     public List<UsuarioResponse> listarPendientes() {
         String tenantId = requireTenant();
-        return usuarioRepository.findByEstado(ESTADO_PENDIENTE).stream()
-                .filter(u -> u.getTenantId() == null || tenantId.equals(u.getTenantId()))
-                .map(usuarioMapper::toResponse)
-                .toList();
-    }
-
-    public List<UsuarioResponse> listarPendientesGlobales() {
-        return usuarioRepository.findByEstadoAndTenantIdIsNull(ESTADO_PENDIENTE).stream()
+        return usuarioRepository.findByEstadoAndTenantId(ESTADO_PENDIENTE, tenantId).stream()
                 .map(usuarioMapper::toResponse)
                 .toList();
     }
@@ -532,13 +561,17 @@ public class UsuarioService {
         if (tenantId == null || tenantId.isBlank()) {
             throw new DomainException(400, "El tenant es obligatorio para asignar", "tenant_id");
         }
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new DomainException(404, "Usuario no encontrado"));
+        // S4: un administrador del tenant solo asigna solicitudes PENDIENTE de su propia empresa.
+        if (!operador && (!ESTADO_PENDIENTE.equals(usuario.getEstado()) || !tenantId.equals(usuario.getTenantId()))) {
+            throw new DomainException(404, "Usuario no encontrado");
+        }
         if (!tenantRepository.existsById(tenantId)) {
             throw new DomainException(400, "El tenant del token no existe", "tenant_id");
         }
         rolRepository.findByCodigo(request.rol())
                 .orElseThrow(() -> new DomainException(400, "Rol no oficial", "rol"));
-        Usuario usuario = usuarioRepository.findById(usuarioId)
-                .orElseThrow(() -> new DomainException(404, "Usuario no encontrado"));
         if (usuario.getTenantId() != null
                 && (!tenantId.equals(usuario.getTenantId()) || !ESTADO_PENDIENTE.equals(usuario.getEstado()))) {
             throw new DomainException(400, "El usuario ya esta asignado a un tenant");
