@@ -171,6 +171,44 @@ class UsuarioControllerIT {
     }
 
     @Test
+    void meCompletaCognitoUsernameDeUnaFilaGoogleAnteriorAV5() throws Exception {
+        Usuario previa = new Usuario();
+        previa.setId("previa-v5-1");
+        previa.setTenantId("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        previa.setEmail("previav5@gmail.com");
+        previa.setCognitoSub("cognito-previav5");
+        previa.setRol("Trabajador");
+        previa.setEstado("ACTIVO");
+        previa.setActivo(true);
+        previa.setCreadoEn(Instant.now());
+        usuarioRepository.saveAndFlush(previa);
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer google-previav5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos.estado").value("ACTIVO"));
+        assertEquals("google_previav5", usuarioRepository.findById("previa-v5-1").orElseThrow().getCognitoUsername());
+    }
+
+    @Test
+    void ningunEndpointDeTenantAsignaRolesDePlataforma() throws Exception {
+        String solicitud = mockMvc.perform(post("/api/v1/auth/access-requests")
+                        .header("Authorization", "Bearer google-quiereplataforma")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rut_empresa\":\"76123456-0\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String usuarioId = JsonPath.read(solicitud, "$.datos.id");
+        for (String rol : new String[]{"AdminPlataforma", "OperadorSaaS"}) {
+            mockMvc.perform(post("/api/v1/usuarios/" + usuarioId + "/asignar").header("Authorization", "Bearer admin")
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"rol\":\"" + rol + "\"}"))
+                    .andExpect(status().isBadRequest());
+            mockMvc.perform(post("/api/v1/usuarios").header("Authorization", "Bearer admin")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"email\":\"plataforma." + rol.toLowerCase() + "@rrhh.cl\",\"rol\":\"" + rol + "\"}"))
+                    .andExpect(status().isBadRequest());
+        }
+        assertEquals("PENDIENTE", usuarioRepository.findById(usuarioId).orElseThrow().getEstado());
+    }
+
+    @Test
     void pendientesGlobalesYaNoExiste() throws Exception {
         mockMvc.perform(get("/api/v1/plataforma/usuarios/pendientes").header("Authorization", "Bearer operador"))
                 .andExpect(status().isNotFound());

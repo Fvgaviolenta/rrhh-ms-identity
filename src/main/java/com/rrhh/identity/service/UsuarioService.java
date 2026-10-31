@@ -88,6 +88,13 @@ public class UsuarioService {
         if (actor.cognitoSub() != null) {
             local = usuarioRepository.findByCognitoSub(actor.cognitoSub()).orElse(null);
         }
+        if (local != null && actor.cognitoUsername() != null
+                && !actor.cognitoUsername().equals(local.getCognitoUsername())) {
+            // Filas de Google vinculadas antes de V5 no tienen cognito_username, y sin él la API
+            // admin de Cognito no encuentra al usuario federado (S7).
+            local.setCognitoUsername(actor.cognitoUsername());
+            local = usuarioRepository.saveAndFlush(local);
+        }
         if (local == null && actor.email() != null && esperado != null && !TenantSlug.PLATAFORMA.equals(esperado.getSlug())) {
             local = vincularInvitacion(actor, esperado);
         }
