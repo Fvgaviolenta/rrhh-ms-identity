@@ -8,7 +8,9 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class JwtTenantConverter implements Converter<Jwt, AbstractAuthenticationToken> {
@@ -55,7 +57,9 @@ public class JwtTenantConverter implements Converter<Jwt, AbstractAuthentication
                 role == null ? null : Roles.claimFromAuthority(authority),
                 trabajadorId,
                 jwt.getSubject(),
-                name
+                name,
+                firstClaim(jwt, "cognito:username"),
+                federadoGoogle(jwt)
         ));
 
         return new JwtAuthenticationToken(jwt, List.of(new SimpleGrantedAuthority(authority)));
@@ -69,6 +73,20 @@ public class JwtTenantConverter implements Converter<Jwt, AbstractAuthentication
             }
         }
         return null;
+    }
+
+    /** El claim {@code identities} de Cognito lista los IdP federados: [{"providerName":"Google", ...}]. */
+    static boolean federadoGoogle(Jwt jwt) {
+        Object identities = jwt.getClaims().get("identities");
+        if (!(identities instanceof Collection<?> lista)) {
+            return false;
+        }
+        for (Object identidad : lista) {
+            if (identidad instanceof Map<?, ?> mapa && "Google".equals(mapa.get("providerName"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String joinNames(String given, String family) {

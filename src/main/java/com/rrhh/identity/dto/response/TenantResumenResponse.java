@@ -4,6 +4,11 @@ public record TenantResumenResponse(
         String id,
         String nombreEmpresa,
         String slug,
-        boolean activo
+        boolean activo,
+        String estado,
+        String rutEmpresa,
+        String razonSocial,
+        String registradoPorEmail,
+        String cognitoError
 ) {
 }

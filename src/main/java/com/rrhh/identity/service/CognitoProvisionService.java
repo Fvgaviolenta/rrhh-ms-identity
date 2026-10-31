@@ -1,11 +1,13 @@
 package com.rrhh.identity.service;
 
+import com.rrhh.identity.exception.DomainException;
 import com.rrhh.identity.model.Usuario;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminCreateUserRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminCreateUserResponse;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminGetUserRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminSetUserPasswordRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminUpdateUserAttributesRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AttributeType;
@@ -17,6 +19,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -62,13 +65,26 @@ public class CognitoProvisionService {
         try (CognitoIdentityProviderClient client = client()) {
             client.adminUpdateUserAttributes(AdminUpdateUserAttributesRequest.builder()
                     .userPoolId(userPoolId)
-                    .username(usuario.getCognitoSub())
+                    .username(usernameParaAdmin(usuario))
                     .userAttributes(atributos(usuario))
                     .build());
             return null;
         } catch (CognitoIdentityProviderException ex) {
             return mensaje(ex);
         }
+    }
+
+    /**
+     * Username que exige la API admin de Cognito: el del IdP para un usuario federado
+     * ({@code google_123}, guardado desde el claim {@code cognito:username}); si no se conoce,
+     * el email, porque el pool usa {@code username_attributes = ["email"]} (ADR-017, S7).
+     */
+    static String usernameParaAdmin(Usuario usuario) {
+        String username = usuario.getCognitoUsername();
+        if (username != null && !username.isBlank()) {
+            return username;
+        }
+        return usuario.getEmail();
     }
 
     static String generarContrasena() {
@@ -93,7 +109,7 @@ public class CognitoProvisionService {
         return out.toString();
     }
 
-    private String crearOActualizar(CognitoIdentityProviderClient client, Usuario usuario, String password) {
+    String crearOActualizar(CognitoIdentityProviderClient client, Usuario usuario, String password) {
         try {
             AdminCreateUserResponse created = client.adminCreateUser(AdminCreateUserRequest.builder()
                     .userPoolId(userPoolId)
@@ -104,6 +120,7 @@ public class CognitoProvisionService {
                     .build());
             return created.user().username();
         } catch (UsernameExistsException ex) {
+            validarMismaVinculacion(client, usuario);
             client.adminUpdateUserAttributes(AdminUpdateUserAttributesRequest.builder()
                     .userPoolId(userPoolId)
                     .username(usuario.getEmail())
@@ -111,6 +128,28 @@ public class CognitoProvisionService {
                     .build());
             return usuario.getEmail();
         }
+    }
+
+    /** Recupera solo la cuenta de esta misma persona; nunca adopta la cuenta de otra empresa o trabajador. */
+    private void validarMismaVinculacion(CognitoIdentityProviderClient client, Usuario usuario) {
+        List<AttributeType> existentes = client.adminGetUser(AdminGetUserRequest.builder()
+                .userPoolId(userPoolId)
+                .username(usuario.getEmail())
+                .build()).userAttributes();
+        boolean mismoTenant = Objects.equals(usuario.getTenantId(), valor(existentes, "custom:tenant_id"));
+        boolean mismoTrabajador = usuario.getTrabajadorId() == null
+                || usuario.getTrabajadorId().equals(valor(existentes, "custom:trabajador_id"));
+        if (!mismoTenant || !mismoTrabajador) {
+            throw new DomainException(409, "El correo ya tiene una cuenta Cognito con otra vinculación", "email");
+        }
+    }
+
+    private static String valor(List<AttributeType> atributos, String nombre) {
+        if (atributos == null) {
+            return null;
+        }
+        return atributos.stream().filter(a -> nombre.equals(a.name())).map(AttributeType::value)
+                .findFirst().orElse(null);
     }
 
     private void establecerContrasenaTemporal(CognitoIdentityProviderClient client, String username, String password) {

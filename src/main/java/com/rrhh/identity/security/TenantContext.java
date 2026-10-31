@@ -38,7 +38,9 @@ public class TenantContext {
             String role,
             String trabajadorId,
             String cognitoSub,
-            String name
+            String name,
+            String cognitoUsername,
+            boolean federadoGoogle
     ) {
     }
 }

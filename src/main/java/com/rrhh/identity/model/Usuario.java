@@ -36,6 +36,9 @@ public class Usuario {
     @Column(name = "cognito_sub")
     private String cognitoSub;
 
+    @Column(name = "cognito_username")
+    private String cognitoUsername;
+
     @Column(length = 50)
     private String rol;
 
