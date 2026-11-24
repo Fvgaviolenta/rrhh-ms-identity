@@ -72,7 +72,7 @@ public class MensajePlataformaService {
         payload.put("destinatarios", lista);
         outboxPublisher.registrar(EVENTO, tenantId, mensajeId, payload);
         List<String> emails = destinatarios.stream().map(Usuario::getEmail).toList();
-        auditLogService.registrar(tenantId, actor.userId(), "MensajePlataforma", mensajeId, "EnvioMensaje",
+        auditLogService.registrar(tenantId, alcancePlataformaService.actorId(actor), "MensajePlataforma", mensajeId, "EnvioMensaje",
                 null, "asunto=" + asunto + "|destinatarios=" + emails);
         return destinatarios.size();
     }

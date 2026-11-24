@@ -39,6 +39,7 @@ public class GrupoService {
     private final UsuarioRepository usuarioRepository;
     private final AuditLogService auditLogService;
     private final TenantContext tenantContext;
+    private final AlcancePlataformaService alcancePlataformaService;
 
     public GrupoService(GrupoEmpresasRepository grupoRepository,
                         GrupoTenantRepository grupoTenantRepository,
@@ -46,7 +47,8 @@ public class GrupoService {
                         TenantRepository tenantRepository,
                         UsuarioRepository usuarioRepository,
                         AuditLogService auditLogService,
-                        TenantContext tenantContext) {
+                        TenantContext tenantContext,
+                        AlcancePlataformaService alcancePlataformaService) {
         this.grupoRepository = grupoRepository;
         this.grupoTenantRepository = grupoTenantRepository;
         this.grupoOperadorRepository = grupoOperadorRepository;
@@ -54,6 +56,7 @@ public class GrupoService {
         this.usuarioRepository = usuarioRepository;
         this.auditLogService = auditLogService;
         this.tenantContext = tenantContext;
+        this.alcancePlataformaService = alcancePlataformaService;
     }
 
     @Transactional(readOnly = true)
@@ -184,7 +187,7 @@ public class GrupoService {
     }
 
     private void auditar(String grupoId, String accion, String anterior, String nuevo) {
-        auditLogService.registrar(null, tenantContext.current().userId(), ENTIDAD, grupoId, accion, anterior, nuevo);
+        auditLogService.registrar(null, alcancePlataformaService.actorId(tenantContext.current()), ENTIDAD, grupoId, accion, anterior, nuevo);
     }
 
     private GrupoResponse toResponse(GrupoEmpresas grupo) {

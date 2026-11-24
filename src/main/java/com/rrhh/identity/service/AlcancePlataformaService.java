@@ -102,9 +102,21 @@ public class AlcancePlataformaService {
     }
 
     /**
-     * Fila local del operador: {@code custom:user_id} del token y, si falta (cuenta recién vinculada
-     * por correo cuyo token aún no trae el claim), la fila OperadorSaaS de su {@code cognito_sub}.
+     * Id de la fila local del actor para la auditoría: {@code custom:user_id} del token y, si falta (cuenta
+     * recién vinculada por correo, o el AdminPlataforma promovido en /auth/me), la fila de su {@code cognito_sub}.
      */
+    @Transactional(readOnly = true)
+    public String actorId(AuthenticatedUser actor) {
+        if (actor.userId() != null && !actor.userId().isBlank()) {
+            return actor.userId();
+        }
+        if (actor.cognitoSub() == null) {
+            return null;
+        }
+        return usuarioRepository.findByCognitoSub(actor.cognitoSub()).map(Usuario::getId).orElse(null);
+    }
+
+    /** Fila local del operador, como {@link #actorId}, pero solo si el claim falta y la fila es OperadorSaaS. */
     private String operadorId(AuthenticatedUser actor) {
         if (actor.userId() != null && !actor.userId().isBlank()) {
             return actor.userId();

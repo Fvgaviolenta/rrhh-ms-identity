@@ -472,7 +472,7 @@ public class UsuarioService {
         usuario.setActivo(true);
         usuario.setCreadoEn(Instant.now());
         usuarioRepository.saveAndFlush(usuario);
-        auditLogService.registrar(tenantId, actor.userId(), "Usuario", usuario.getId(), "CreacionUsuarioPlataforma",
+        auditLogService.registrar(tenantId, alcancePlataformaService.actorId(actor), "Usuario", usuario.getId(), "CreacionUsuarioPlataforma",
                 null, email + "|" + rol);
         return usuarioMapper.toResponse(usuario);
     }
@@ -627,7 +627,7 @@ public class UsuarioService {
         usuarioRepository.save(usuario);
         // custom:role vive en Cognito: sin esta sincronización el siguiente JWT conservaría el rol anterior.
         String cognitoError = cognitoProvisionService.actualizar(usuario);
-        auditLogService.registrar(usuario.getTenantId(), actor.userId(), "Usuario", usuario.getId(), "Modificacion",
+        auditLogService.registrar(usuario.getTenantId(), alcancePlataformaService.actorId(actor), "Usuario", usuario.getId(), "Modificacion",
                 "rol=" + anterior, "rol=" + rolNuevo);
         return usuarioMapper.toResponse(usuario, null, cognitoError);
     }
@@ -640,6 +640,10 @@ public class UsuarioService {
         String tenantId = operador ? request.tenantId() : actor.tenantId();
         if (tenantId == null || tenantId.isBlank()) {
             throw new DomainException(400, "El tenant es obligatorio para asignar", "tenant_id");
+        }
+        if (operador) {
+            // ADR-020, S3: el operador solo asigna a empresas de sus grupos; fuera de alcance, 404.
+            alcancePlataformaService.exigir(actor, tenantId);
         }
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new DomainException(404, "Usuario no encontrado"));

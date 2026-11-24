@@ -284,7 +284,7 @@ public class TenantService {
             usuarioRepository.saveAndFlush(registrante);
             cognitoError = cognitoProvisionService.actualizar(registrante);
         }
-        auditLogService.registrar(tenant.getId(), tenantContext.current().userId(), "Tenant", tenant.getId(),
+        auditLogService.registrar(tenant.getId(), alcancePlataformaService.actorId(tenantContext.current()), "Tenant", tenant.getId(),
                 "ActivacionEmpresa", TenantEstado.PENDIENTE_ACTIVACION, TenantEstado.ACTIVO);
         return resumen(tenant, registrante != null ? registrante.getEmail() : null, cognitoError);
     }
@@ -306,7 +306,7 @@ public class TenantService {
         tenantRepository.saveAndFlush(tenant);
         tenantEstadoCache.invalidar(tenantId);
         String cognitoError = enCognito(tenantId, cognitoProvisionService::deshabilitar);
-        auditLogService.registrar(tenantId, actor.userId(), "Tenant", tenantId, "SuspensionEmpresa",
+        auditLogService.registrar(tenantId, alcancePlataformaService.actorId(actor), "Tenant", tenantId, "SuspensionEmpresa",
                 TenantEstado.ACTIVO, TenantEstado.SUSPENDIDO + "|" + motivoLimpio);
         outboxPublisher.registrar("tenant.suspendido", tenantId, tenantId,
                 Map.of("tenantId", tenantId, "motivo", motivoLimpio));
@@ -325,7 +325,7 @@ public class TenantService {
         tenantRepository.saveAndFlush(tenant);
         tenantEstadoCache.invalidar(tenantId);
         String cognitoError = enCognito(tenantId, cognitoProvisionService::habilitar);
-        auditLogService.registrar(tenantId, actor.userId(), "Tenant", tenantId, "ReactivacionEmpresa",
+        auditLogService.registrar(tenantId, alcancePlataformaService.actorId(actor), "Tenant", tenantId, "ReactivacionEmpresa",
                 TenantEstado.SUSPENDIDO, TenantEstado.ACTIVO);
         outboxPublisher.registrar("tenant.reactivado", tenantId, tenantId, Map.of("tenantId", tenantId));
         return resumen(tenant, emailDe(tenant.getRegistradoPor()), cognitoError);
@@ -358,7 +358,7 @@ public class TenantService {
             registrante.setActivo(false);
             usuarioRepository.saveAndFlush(registrante);
         }
-        auditLogService.registrar(tenant.getId(), tenantContext.current().userId(), "Tenant", tenant.getId(),
+        auditLogService.registrar(tenant.getId(), alcancePlataformaService.actorId(tenantContext.current()), "Tenant", tenant.getId(),
                 "RechazoEmpresa", TenantEstado.PENDIENTE_ACTIVACION, TenantEstado.RECHAZADO + "|" + motivo.trim());
         return resumen(tenant, registrante != null ? registrante.getEmail() : null, null);
     }

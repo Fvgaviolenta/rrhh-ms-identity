@@ -14,12 +14,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -83,5 +85,22 @@ class PlataformaAlcanceIT {
         mockMvc.perform(get("/api/v1/plataforma/tenants/00000000-0000-0000-0000-000000000001/usuarios")
                         .header("Authorization", "Bearer admin-plataforma"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void operadorNoAsignaUnaSolicitudAEmpresaFueraDeSuGrupo() throws Exception {
+        String pendiente = PlataformaFixtures.usuario(usuarioRepository, null, null, "PENDIENTE").getId();
+        mockMvc.perform(post("/api/v1/usuarios/" + pendiente + "/asignar").header("Authorization", "Bearer operador-grupo")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rol\":\"Trabajador\",\"tenant_id\":\"" + b + "\"}"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/usuarios/" + pendiente + "/asignar").header("Authorization", "Bearer operador-grupo")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rol\":\"SuperAdmin\",\"tenant_id\":\"00000000-0000-0000-0000-000000000001\"}"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/usuarios/" + pendiente + "/asignar").header("Authorization", "Bearer operador-grupo")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rol\":\"Trabajador\",\"tenant_id\":\"" + a + "\"}"))
+                .andExpect(status().isOk());
     }
 }

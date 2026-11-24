@@ -164,6 +164,17 @@ class SuspensionIT {
                 .anyMatch(e -> "tenant.reactivado".equals(e.getEventType()) && a.equals(e.getAggregateId())));
     }
 
+    @Test
+    void laAuditoriaGuardaAlActorAunqueSuTokenNoTraigaCustomUserId() throws Exception {
+        me("admin-plataforma").andExpect(status().isOk());
+        String adminId = usuarioRepository.findByCognitoSub("cognito-owner").orElseThrow().getId();
+        suspender("admin-plataforma", b, "Impago").andExpect(status().isOk());
+        AuditLog log = auditLogRepository.findAll().stream()
+                .filter(l -> b.equals(l.getEntidadId()) && "SuspensionEmpresa".equals(l.getAccion()))
+                .findFirst().orElseThrow();
+        assertEquals(adminId, log.getUsuarioId());
+    }
+
     private void empresaDelTokenActiva() {
         Tenant t = tenantRepository.findById(TestJwtConfig.TENANT_SUSPENDIBLE).orElseGet(() -> {
             Tenant nuevo = new Tenant();
