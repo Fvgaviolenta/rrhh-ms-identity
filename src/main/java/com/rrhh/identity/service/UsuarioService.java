@@ -326,6 +326,13 @@ public class UsuarioService {
                 .toList();
     }
 
+    /** Cuentas OperadorSaaS, también las aún no vinculadas, para asignarlas a un grupo (S2, S8). */
+    public List<UsuarioResponse> listarOperadores() {
+        return usuarioRepository.findByRolOrderByEmailAsc("OperadorSaaS").stream()
+                .map(usuarioMapper::toResponse)
+                .toList();
+    }
+
     public List<UsuarioResponse> listarPorTenantPlataforma(String tenantId) {
         TenantContext.AuthenticatedUser actor = tenantContext.current();
         if (!esRolDePlataforma(actor.role())) {
