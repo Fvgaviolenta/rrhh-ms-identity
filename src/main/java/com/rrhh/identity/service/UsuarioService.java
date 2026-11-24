@@ -49,6 +49,7 @@ public class UsuarioService {
     private final TenantService tenantService;
     private final OutboxPublisher outboxPublisher;
     private final AdminPlataformaBootstrap adminPlataformaBootstrap;
+    private final AlcancePlataformaService alcancePlataformaService;
 
     public UsuarioService(
             UsuarioRepository usuarioRepository,
@@ -60,7 +61,8 @@ public class UsuarioService {
             CognitoProvisionService cognitoProvisionService,
             TenantService tenantService,
             OutboxPublisher outboxPublisher,
-            AdminPlataformaBootstrap adminPlataformaBootstrap
+            AdminPlataformaBootstrap adminPlataformaBootstrap,
+            AlcancePlataformaService alcancePlataformaService
     ) {
         this.usuarioRepository = usuarioRepository;
         this.tenantRepository = tenantRepository;
@@ -72,6 +74,7 @@ public class UsuarioService {
         this.tenantService = tenantService;
         this.outboxPublisher = outboxPublisher;
         this.adminPlataformaBootstrap = adminPlataformaBootstrap;
+        this.alcancePlataformaService = alcancePlataformaService;
     }
 
     @Transactional
@@ -328,6 +331,7 @@ public class UsuarioService {
         if (!esRolDePlataforma(actor.role())) {
             throw new DomainException(403, "Acceso exclusivo para la plataforma");
         }
+        alcancePlataformaService.exigir(actor, tenantId);
         return usuarioRepository.findByTenantId(tenantId).stream()
                 .map(usuarioMapper::toResponse)
                 .toList();
@@ -468,7 +472,7 @@ public class UsuarioService {
         usuario.setActivo(true);
         usuario.setCreadoEn(Instant.now());
         usuarioRepository.saveAndFlush(usuario);
-        auditLogService.registrar(tenantId, actor.userId(), "Usuario", usuario.getId(), "CreacionUsuarioPlataforma",
+        auditLogService.registrar(tenantId, alcancePlataformaService.actorId(actor), "Usuario", usuario.getId(), "CreacionUsuarioPlataforma",
                 null, email + "|" + rol);
         return usuarioMapper.toResponse(usuario);
     }
@@ -578,13 +582,36 @@ public class UsuarioService {
         Usuario usuario = usuarioRepository.findByTrabajadorIdAndTenantId(trabajadorId, actor.tenantId())
                 .orElseThrow(() -> new DomainException(404, "El trabajador no tiene una cuenta de acceso", "trabajador_id"));
         validarQuePuedeGestionarUsuario(actor, usuario);
+        return aplicarCambioDeRol(actor, usuario, rolSolicitado);
+    }
+
+    /**
+     * Cambio de rol desde la consola de plataforma (S5): la empresa debe estar en el alcance del actor
+     * (404 si no) y el usuario debe pertenecer a esa empresa (404 si no). Mismas reglas que dentro de la empresa.
+     */
+    @Transactional
+    public UsuarioResponse cambiarRolDesdePlataforma(String tenantId, String usuarioId, String rolSolicitado) {
+        TenantContext.AuthenticatedUser actor = tenantContext.current();
+        alcancePlataformaService.exigir(actor, tenantId);
+        Usuario usuario = usuarioRepository.findByIdAndTenantId(usuarioId, tenantId)
+                .orElseThrow(() -> new DomainException(404, "Usuario no encontrado"));
+        return aplicarCambioDeRol(actor, usuario, rolSolicitado);
+    }
+
+    /**
+     * Reglas comunes del cambio de rol: no la propia cuenta, no SuperAdmin ni roles de plataforma, solo cuentas
+     * ACTIVO y solo hacia Admin de RRHH, Jefatura o Trabajador; sincroniza {@code custom:role} en Cognito y
+     * audita en la empresa del usuario.
+     */
+    private UsuarioResponse aplicarCambioDeRol(TenantContext.AuthenticatedUser actor, Usuario usuario, String rolSolicitado) {
         boolean esMismaCuenta = usuario.getId().equals(actor.userId())
                 || (usuario.getCognitoSub() != null && usuario.getCognitoSub().equals(actor.cognitoSub()));
         if (esMismaCuenta) {
             throw new DomainException(403, "No puedes cambiar tu propio rol", "rol");
         }
         String autoridadActual = Roles.authorityFromClaim(usuario.getRol());
-        if (Roles.SUPERADMIN.equals(autoridadActual) || Roles.OPERADOR_SAAS.equals(autoridadActual)) {
+        if (Roles.SUPERADMIN.equals(autoridadActual) || Roles.OPERADOR_SAAS.equals(autoridadActual)
+                || Roles.ADMIN_PLATAFORMA.equals(autoridadActual)) {
             throw new DomainException(403, "El rol de esta cuenta no se puede modificar", "rol");
         }
         if (!ESTADO_ACTIVO.equals(usuario.getEstado())) {
@@ -600,7 +627,8 @@ public class UsuarioService {
         usuarioRepository.save(usuario);
         // custom:role vive en Cognito: sin esta sincronización el siguiente JWT conservaría el rol anterior.
         String cognitoError = cognitoProvisionService.actualizar(usuario);
-        auditar(actor, "Usuario", usuario.getId(), "Modificacion", "rol=" + anterior, "rol=" + rolNuevo);
+        auditLogService.registrar(usuario.getTenantId(), alcancePlataformaService.actorId(actor), "Usuario", usuario.getId(), "Modificacion",
+                "rol=" + anterior, "rol=" + rolNuevo);
         return usuarioMapper.toResponse(usuario, null, cognitoError);
     }
 
@@ -612,6 +640,10 @@ public class UsuarioService {
         String tenantId = operador ? request.tenantId() : actor.tenantId();
         if (tenantId == null || tenantId.isBlank()) {
             throw new DomainException(400, "El tenant es obligatorio para asignar", "tenant_id");
+        }
+        if (operador) {
+            // ADR-020, S3: el operador solo asigna a empresas de sus grupos; fuera de alcance, 404.
+            alcancePlataformaService.exigir(actor, tenantId);
         }
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new DomainException(404, "Usuario no encontrado"));

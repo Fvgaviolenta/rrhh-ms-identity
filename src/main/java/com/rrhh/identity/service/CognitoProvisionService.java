@@ -7,9 +7,12 @@ import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminCreateUserRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminCreateUserResponse;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminDisableUserRequest;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminEnableUserRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminGetUserRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminSetUserPasswordRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminUpdateUserAttributesRequest;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminUserGlobalSignOutRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AttributeType;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.CognitoIdentityProviderException;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.MessageActionType;
@@ -72,6 +75,46 @@ public class CognitoProvisionService {
         } catch (CognitoIdentityProviderException ex) {
             return mensaje(ex);
         }
+    }
+
+    /**
+     * Suspensión de la empresa (S6): deshabilita la cuenta y cierra sus sesiones (revoca los refresh tokens).
+     * Devuelve el error de Cognito, o null.
+     */
+    public String deshabilitar(Usuario usuario) {
+        if (userPoolId.isBlank()) {
+            return "Cognito no está configurado (COGNITO_ISSUER).";
+        }
+        try (CognitoIdentityProviderClient client = client()) {
+            deshabilitar(client, usuario);
+            return null;
+        } catch (CognitoIdentityProviderException ex) {
+            return mensaje(ex);
+        }
+    }
+
+    /** Reactivación de la empresa (S6): vuelve a habilitar la cuenta. Devuelve el error de Cognito, o null. */
+    public String habilitar(Usuario usuario) {
+        if (userPoolId.isBlank()) {
+            return "Cognito no está configurado (COGNITO_ISSUER).";
+        }
+        try (CognitoIdentityProviderClient client = client()) {
+            habilitar(client, usuario);
+            return null;
+        } catch (CognitoIdentityProviderException ex) {
+            return mensaje(ex);
+        }
+    }
+
+    void deshabilitar(CognitoIdentityProviderClient client, Usuario usuario) {
+        String username = usernameParaAdmin(usuario);
+        client.adminDisableUser(AdminDisableUserRequest.builder().userPoolId(userPoolId).username(username).build());
+        client.adminUserGlobalSignOut(AdminUserGlobalSignOutRequest.builder().userPoolId(userPoolId).username(username).build());
+    }
+
+    void habilitar(CognitoIdentityProviderClient client, Usuario usuario) {
+        client.adminEnableUser(AdminEnableUserRequest.builder()
+                .userPoolId(userPoolId).username(usernameParaAdmin(usuario)).build());
     }
 
     /**

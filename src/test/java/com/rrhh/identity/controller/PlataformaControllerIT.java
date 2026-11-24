@@ -55,7 +55,7 @@ class PlataformaControllerIT {
     void adminPlataformaActivaYRegistranteQuedaSuperAdminActivo() throws Exception {
         String id = registrar("google-activa", "22222222-2", "Activa Uno");
         mockMvc.perform(get("/api/v1/plataforma/tenants").param("estado", "PENDIENTE_ACTIVACION")
-                        .header("Authorization", "Bearer operador"))
+                        .header("Authorization", "Bearer admin-plataforma"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datos[?(@.id=='" + id + "')].registrado_por_email", hasItem("activa@gmail.com")))
                 .andExpect(jsonPath("$.datos[?(@.estado!='PENDIENTE_ACTIVACION')]").isEmpty());

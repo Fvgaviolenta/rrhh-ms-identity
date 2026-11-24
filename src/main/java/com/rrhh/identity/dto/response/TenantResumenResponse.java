@@ -9,6 +9,8 @@ public record TenantResumenResponse(
         String rutEmpresa,
         String razonSocial,
         String registradoPorEmail,
-        String cognitoError
+        String cognitoError,
+        /** Nombre del grupo de empresas (ADR-020), o null si no está en ninguno. */
+        String grupo
 ) {
 }
