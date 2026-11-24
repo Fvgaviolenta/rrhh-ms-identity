@@ -69,6 +69,12 @@ public class PlataformaController {
                 .body(ApiResponse.created(usuarioService.crearUsuarioPlataforma(request), "Cuenta de plataforma creada"));
     }
 
+    @GetMapping("/operadores")
+    @PreAuthorize("hasRole('ADMIN_PLATAFORMA')")
+    public ApiResponse<List<UsuarioResponse>> operadores() {
+        return ApiResponse.ok(usuarioService.listarOperadores(), "Operadores de la plataforma");
+    }
+
     @GetMapping("/tenants/{tenant_id}/usuarios")
     @PreAuthorize("hasAnyRole('OPERADOR_SAAS','ADMIN_PLATAFORMA')")
     public ApiResponse<List<UsuarioResponse>> usuariosPorTenant(@PathVariable("tenant_id") String tenantId) {
