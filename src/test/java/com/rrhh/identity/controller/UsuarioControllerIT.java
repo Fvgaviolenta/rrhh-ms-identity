@@ -412,8 +412,8 @@ class UsuarioControllerIT {
     }
 
     @Test
-    void operadorListaEmpresasCliente() throws Exception {
-        mockMvc.perform(get("/api/v1/plataforma/tenants").header("Authorization", "Bearer operador"))
+    void adminPlataformaListaEmpresasCliente() throws Exception {
+        mockMvc.perform(get("/api/v1/plataforma/tenants").header("Authorization", "Bearer admin-plataforma"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datos[?(@.slug=='empresa-demo-spa')]").isNotEmpty())
                 .andExpect(jsonPath("$.datos[?(@.slug=='plataforma')]").isEmpty());

@@ -49,6 +49,7 @@ public class UsuarioService {
     private final TenantService tenantService;
     private final OutboxPublisher outboxPublisher;
     private final AdminPlataformaBootstrap adminPlataformaBootstrap;
+    private final AlcancePlataformaService alcancePlataformaService;
 
     public UsuarioService(
             UsuarioRepository usuarioRepository,
@@ -60,7 +61,8 @@ public class UsuarioService {
             CognitoProvisionService cognitoProvisionService,
             TenantService tenantService,
             OutboxPublisher outboxPublisher,
-            AdminPlataformaBootstrap adminPlataformaBootstrap
+            AdminPlataformaBootstrap adminPlataformaBootstrap,
+            AlcancePlataformaService alcancePlataformaService
     ) {
         this.usuarioRepository = usuarioRepository;
         this.tenantRepository = tenantRepository;
@@ -72,6 +74,7 @@ public class UsuarioService {
         this.tenantService = tenantService;
         this.outboxPublisher = outboxPublisher;
         this.adminPlataformaBootstrap = adminPlataformaBootstrap;
+        this.alcancePlataformaService = alcancePlataformaService;
     }
 
     @Transactional
@@ -328,6 +331,7 @@ public class UsuarioService {
         if (!esRolDePlataforma(actor.role())) {
             throw new DomainException(403, "Acceso exclusivo para la plataforma");
         }
+        alcancePlataformaService.exigir(actor, tenantId);
         return usuarioRepository.findByTenantId(tenantId).stream()
                 .map(usuarioMapper::toResponse)
                 .toList();

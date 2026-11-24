@@ -31,6 +31,7 @@ import java.util.Map;
  *  - "postulante"       : Google sin empresa que pide acceso por RUT (Pablo Postulante).
  *  - "postulante2"      : otro Google sin empresa, para el flujo pedir acceso y ser asignado.
  *  - "postulante3"      : otro Google sin empresa, para ver su solicitud pendiente en /auth/me.
+ *  - "operador-grupo"   : OperadorSaaS con fila propia (OPERADOR_GRUPO_ID) que cada prueba asigna a su grupo.
  *  - "google-<x>"       : Google sin empresa propio de cada prueba (sub cognito-x, <x>@gmail.com),
  *                         para no compartir filas entre clases de prueba sobre la misma base H2.
  */
@@ -39,6 +40,8 @@ public class TestJwtConfig {
 
     private static final String TENANT_DEMO = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     private static final String TENANT_OTRO = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+    /** custom:user_id del token "operador-grupo"; la fila OperadorSaaS la crea la prueba que lo usa. */
+    public static final String OPERADOR_GRUPO_ID = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
     private static final List<Map<String, Object>> GOOGLE = List.of(Map.of("providerName", "Google"));
 
     @Bean
@@ -82,6 +85,10 @@ public class TestJwtConfig {
                         .claim("email", "operador@rrhh.local")
                         .claim("custom:role", "OperadorSaaS")
                         .claim("custom:user_id", "dddddddd-dddd-dddd-dddd-dddddddddddd");
+                case "operador-grupo" -> builder.subject("cognito-operador-grupo")
+                        .claim("email", "operador.grupo@rrhh.local")
+                        .claim("custom:role", "OperadorSaaS")
+                        .claim("custom:user_id", OPERADOR_GRUPO_ID);
                 case "owner-google" -> builder.subject("cognito-owner")
                         .claim("email", "owner@gmail.com")
                         .claim("cognito:username", "google_111")

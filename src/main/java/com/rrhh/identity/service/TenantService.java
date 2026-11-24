@@ -6,7 +6,11 @@ import com.rrhh.identity.dto.response.TenantResumenResponse;
 import com.rrhh.identity.exception.DomainException;
 import com.rrhh.identity.model.Tenant;
 import com.rrhh.identity.model.TenantEstado;
+import com.rrhh.identity.model.GrupoEmpresas;
+import com.rrhh.identity.model.GrupoTenant;
 import com.rrhh.identity.model.Usuario;
+import com.rrhh.identity.repository.GrupoEmpresasRepository;
+import com.rrhh.identity.repository.GrupoTenantRepository;
 import com.rrhh.identity.repository.TenantRepository;
 import com.rrhh.identity.repository.UsuarioRepository;
 import com.rrhh.identity.security.Roles;
@@ -20,7 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 
 @Service
@@ -37,6 +44,9 @@ public class TenantService {
     private final TenantContext tenantContext;
     private final AuditLogService auditLogService;
     private final CognitoProvisionService cognitoProvisionService;
+    private final AlcancePlataformaService alcancePlataformaService;
+    private final GrupoTenantRepository grupoTenantRepository;
+    private final GrupoEmpresasRepository grupoEmpresasRepository;
     private final long delayMs;
 
     public TenantService(
@@ -45,6 +55,9 @@ public class TenantService {
             TenantContext tenantContext,
             AuditLogService auditLogService,
             CognitoProvisionService cognitoProvisionService,
+            AlcancePlataformaService alcancePlataformaService,
+            GrupoTenantRepository grupoTenantRepository,
+            GrupoEmpresasRepository grupoEmpresasRepository,
             @Value("${rrhh.tenant-resolver.delay-ms:150}") long delayMs
     ) {
         this.tenantRepository = tenantRepository;
@@ -52,6 +65,9 @@ public class TenantService {
         this.tenantContext = tenantContext;
         this.auditLogService = auditLogService;
         this.cognitoProvisionService = cognitoProvisionService;
+        this.alcancePlataformaService = alcancePlataformaService;
+        this.grupoTenantRepository = grupoTenantRepository;
+        this.grupoEmpresasRepository = grupoEmpresasRepository;
         this.delayMs = delayMs;
     }
 
@@ -172,8 +188,16 @@ public class TenantService {
     }
 
     TenantResumenResponse resumen(Tenant t, String registradoPorEmail, String cognitoError) {
+        String grupo = grupoTenantRepository.findByTenantId(t.getId())
+                .flatMap(gt -> grupoEmpresasRepository.findById(gt.getGrupoId()))
+                .map(GrupoEmpresas::getNombre)
+                .orElse(null);
+        return resumen(t, registradoPorEmail, cognitoError, grupo);
+    }
+
+    private static TenantResumenResponse resumen(Tenant t, String registradoPorEmail, String cognitoError, String grupo) {
         return new TenantResumenResponse(t.getId(), t.getNombreEmpresa(), t.getSlug(), t.isActivo(), t.getEstado(),
-                t.getRutEmpresa(), t.getRazonSocial(), registradoPorEmail, cognitoError);
+                t.getRutEmpresa(), t.getRazonSocial(), registradoPorEmail, cognitoError, grupo);
     }
 
     /** Resolver público del login "Unirme a mi empresa" (S3): solo empresas ACTIVO, nunca la de plataforma. */
@@ -210,7 +234,11 @@ public class TenantService {
     private static final Set<String> ESTADOS = Set.of(
             TenantEstado.PENDIENTE_ACTIVACION, TenantEstado.ACTIVO, TenantEstado.RECHAZADO, TenantEstado.SUSPENDIDO);
 
-    /** Consola de plataforma (S2): todas las empresas cliente, o las de un estado; nunca la de plataforma. */
+    /**
+     * Consola de plataforma (S1, S3): las empresas cliente en alcance del actor (todas para el
+     * AdminPlataforma, las de sus grupos para un OperadorSaaS), o las de un estado; nunca la de plataforma.
+     */
+    @Transactional(readOnly = true)
     public List<TenantResumenResponse> listar(String estado) {
         List<Tenant> tenants;
         if (estado == null || estado.isBlank()) {
@@ -222,8 +250,14 @@ public class TenantService {
             }
             tenants = tenantRepository.findByEstadoAndSlugNotOrderByNombreEmpresaAsc(filtro, TenantSlug.PLATAFORMA);
         }
+        Optional<Set<String>> alcance = alcancePlataformaService.tenantsEnAlcance(tenantContext.current());
+        Map<String, String> grupoPorId = grupoEmpresasRepository.findAll().stream()
+                .collect(Collectors.toMap(GrupoEmpresas::getId, GrupoEmpresas::getNombre));
+        Map<String, String> grupoPorTenant = grupoTenantRepository.findAll().stream()
+                .collect(Collectors.toMap(GrupoTenant::getTenantId, gt -> grupoPorId.get(gt.getGrupoId())));
         return tenants.stream()
-                .map(t -> resumen(t, emailDe(t.getRegistradoPor()), null))
+                .filter(t -> alcance.map(ids -> ids.contains(t.getId())).orElse(true))
+                .map(t -> resumen(t, emailDe(t.getRegistradoPor()), null, grupoPorTenant.get(t.getId())))
                 .toList();
     }
 
