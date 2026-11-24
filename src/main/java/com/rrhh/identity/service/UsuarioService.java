@@ -582,13 +582,36 @@ public class UsuarioService {
         Usuario usuario = usuarioRepository.findByTrabajadorIdAndTenantId(trabajadorId, actor.tenantId())
                 .orElseThrow(() -> new DomainException(404, "El trabajador no tiene una cuenta de acceso", "trabajador_id"));
         validarQuePuedeGestionarUsuario(actor, usuario);
+        return aplicarCambioDeRol(actor, usuario, rolSolicitado);
+    }
+
+    /**
+     * Cambio de rol desde la consola de plataforma (S5): la empresa debe estar en el alcance del actor
+     * (404 si no) y el usuario debe pertenecer a esa empresa (404 si no). Mismas reglas que dentro de la empresa.
+     */
+    @Transactional
+    public UsuarioResponse cambiarRolDesdePlataforma(String tenantId, String usuarioId, String rolSolicitado) {
+        TenantContext.AuthenticatedUser actor = tenantContext.current();
+        alcancePlataformaService.exigir(actor, tenantId);
+        Usuario usuario = usuarioRepository.findByIdAndTenantId(usuarioId, tenantId)
+                .orElseThrow(() -> new DomainException(404, "Usuario no encontrado"));
+        return aplicarCambioDeRol(actor, usuario, rolSolicitado);
+    }
+
+    /**
+     * Reglas comunes del cambio de rol: no la propia cuenta, no SuperAdmin ni roles de plataforma, solo cuentas
+     * ACTIVO y solo hacia Admin de RRHH, Jefatura o Trabajador; sincroniza {@code custom:role} en Cognito y
+     * audita en la empresa del usuario.
+     */
+    private UsuarioResponse aplicarCambioDeRol(TenantContext.AuthenticatedUser actor, Usuario usuario, String rolSolicitado) {
         boolean esMismaCuenta = usuario.getId().equals(actor.userId())
                 || (usuario.getCognitoSub() != null && usuario.getCognitoSub().equals(actor.cognitoSub()));
         if (esMismaCuenta) {
             throw new DomainException(403, "No puedes cambiar tu propio rol", "rol");
         }
         String autoridadActual = Roles.authorityFromClaim(usuario.getRol());
-        if (Roles.SUPERADMIN.equals(autoridadActual) || Roles.OPERADOR_SAAS.equals(autoridadActual)) {
+        if (Roles.SUPERADMIN.equals(autoridadActual) || Roles.OPERADOR_SAAS.equals(autoridadActual)
+                || Roles.ADMIN_PLATAFORMA.equals(autoridadActual)) {
             throw new DomainException(403, "El rol de esta cuenta no se puede modificar", "rol");
         }
         if (!ESTADO_ACTIVO.equals(usuario.getEstado())) {
@@ -604,7 +627,8 @@ public class UsuarioService {
         usuarioRepository.save(usuario);
         // custom:role vive en Cognito: sin esta sincronización el siguiente JWT conservaría el rol anterior.
         String cognitoError = cognitoProvisionService.actualizar(usuario);
-        auditar(actor, "Usuario", usuario.getId(), "Modificacion", "rol=" + anterior, "rol=" + rolNuevo);
+        auditLogService.registrar(usuario.getTenantId(), actor.userId(), "Usuario", usuario.getId(), "Modificacion",
+                "rol=" + anterior, "rol=" + rolNuevo);
         return usuarioMapper.toResponse(usuario, null, cognitoError);
     }
 

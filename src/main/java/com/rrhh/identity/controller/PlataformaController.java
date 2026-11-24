@@ -1,6 +1,7 @@
 package com.rrhh.identity.controller;
 
 import com.rrhh.identity.dto.ApiResponse;
+import com.rrhh.identity.dto.request.CambiarRolUsuarioRequest;
 import com.rrhh.identity.dto.request.CrearUsuarioPlataformaRequest;
 import com.rrhh.identity.dto.request.RechazarEmpresaRequest;
 import com.rrhh.identity.dto.response.TenantResumenResponse;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -65,5 +67,15 @@ public class PlataformaController {
     @PreAuthorize("hasAnyRole('OPERADOR_SAAS','ADMIN_PLATAFORMA')")
     public ApiResponse<List<UsuarioResponse>> usuariosPorTenant(@PathVariable("tenant_id") String tenantId) {
         return ApiResponse.ok(usuarioService.listarPorTenantPlataforma(tenantId), "Usuarios del tenant solicitado");
+    }
+
+    @PatchMapping("/tenants/{tenant_id}/usuarios/{usuario_id}/rol")
+    @PreAuthorize("hasAnyRole('OPERADOR_SAAS','ADMIN_PLATAFORMA')")
+    public ApiResponse<UsuarioResponse> cambiarRol(
+            @PathVariable("tenant_id") String tenantId,
+            @PathVariable("usuario_id") String usuarioId,
+            @Valid @RequestBody CambiarRolUsuarioRequest request
+    ) {
+        return ApiResponse.ok(usuarioService.cambiarRolDesdePlataforma(tenantId, usuarioId, request.rol()), "Rol actualizado");
     }
 }
