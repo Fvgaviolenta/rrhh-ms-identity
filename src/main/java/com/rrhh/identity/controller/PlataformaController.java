@@ -78,4 +78,19 @@ public class PlataformaController {
     ) {
         return ApiResponse.ok(usuarioService.cambiarRolDesdePlataforma(tenantId, usuarioId, request.rol()), "Rol actualizado");
     }
+
+    @PostMapping("/tenants/{tenant_id}/suspender")
+    @PreAuthorize("hasAnyRole('OPERADOR_SAAS','ADMIN_PLATAFORMA')")
+    public ApiResponse<TenantResumenResponse> suspender(
+            @PathVariable("tenant_id") String tenantId,
+            @Valid @RequestBody RechazarEmpresaRequest request
+    ) {
+        return ApiResponse.ok(tenantService.suspender(tenantId, request.motivo()), "Empresa suspendida");
+    }
+
+    @PostMapping("/tenants/{tenant_id}/reactivar")
+    @PreAuthorize("hasAnyRole('OPERADOR_SAAS','ADMIN_PLATAFORMA')")
+    public ApiResponse<TenantResumenResponse> reactivar(@PathVariable("tenant_id") String tenantId) {
+        return ApiResponse.ok(tenantService.reactivar(tenantId), "Empresa reactivada");
+    }
 }

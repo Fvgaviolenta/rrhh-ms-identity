@@ -5,6 +5,9 @@ import com.rrhh.identity.model.Usuario;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminCreateUserRequest;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminDisableUserRequest;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminEnableUserRequest;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminUserGlobalSignOutRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminGetUserRequest;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminGetUserResponse;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AttributeType;
@@ -14,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CognitoProvisionServiceTest {
@@ -64,5 +68,27 @@ class CognitoProvisionServiceTest {
         DomainException ex = assertThrows(DomainException.class,
                 () -> service.crearOActualizar(client, usuario(), "Clave123!"));
         assertEquals(409, ex.getCodigo());
+    }
+
+    @Test
+    void deshabilitarBloqueaLaCuentaYCierraSusSesiones() {
+        Usuario u = usuario();
+        u.setCognitoUsername("google_999");
+        service.deshabilitar(client, u);
+        verify(client).adminDisableUser(AdminDisableUserRequest.builder().userPoolId("pool").username("google_999").build());
+        verify(client).adminUserGlobalSignOut(AdminUserGlobalSignOutRequest.builder().userPoolId("pool").username("google_999").build());
+    }
+
+    @Test
+    void habilitarReactivaLaCuenta() {
+        service.habilitar(client, usuario());
+        verify(client).adminEnableUser(AdminEnableUserRequest.builder().userPoolId("pool").username("persona@example.com").build());
+    }
+
+    @Test
+    void sinPoolConfiguradoDeshabilitarDevuelveElErrorSinLlamarACognito() {
+        CognitoProvisionService sinPool = new CognitoProvisionService("", "", "us-east-1");
+        assertEquals("Cognito no está configurado (COGNITO_ISSUER).", sinPool.deshabilitar(usuario()));
+        assertEquals("Cognito no está configurado (COGNITO_ISSUER).", sinPool.habilitar(usuario()));
     }
 }

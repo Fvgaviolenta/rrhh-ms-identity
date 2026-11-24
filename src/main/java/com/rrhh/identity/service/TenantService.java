@@ -14,6 +14,7 @@ import com.rrhh.identity.repository.GrupoTenantRepository;
 import com.rrhh.identity.repository.TenantRepository;
 import com.rrhh.identity.repository.UsuarioRepository;
 import com.rrhh.identity.security.Roles;
+import com.rrhh.identity.security.TenantEstadoCache;
 import com.rrhh.identity.security.TenantContext;
 import com.rrhh.identity.util.RutEmpresa;
 import com.rrhh.identity.util.TenantSlug;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.UUID;
 
@@ -47,6 +49,8 @@ public class TenantService {
     private final AlcancePlataformaService alcancePlataformaService;
     private final GrupoTenantRepository grupoTenantRepository;
     private final GrupoEmpresasRepository grupoEmpresasRepository;
+    private final OutboxPublisher outboxPublisher;
+    private final TenantEstadoCache tenantEstadoCache;
     private final long delayMs;
 
     public TenantService(
@@ -58,6 +62,8 @@ public class TenantService {
             AlcancePlataformaService alcancePlataformaService,
             GrupoTenantRepository grupoTenantRepository,
             GrupoEmpresasRepository grupoEmpresasRepository,
+            OutboxPublisher outboxPublisher,
+            TenantEstadoCache tenantEstadoCache,
             @Value("${rrhh.tenant-resolver.delay-ms:150}") long delayMs
     ) {
         this.tenantRepository = tenantRepository;
@@ -68,6 +74,8 @@ public class TenantService {
         this.alcancePlataformaService = alcancePlataformaService;
         this.grupoTenantRepository = grupoTenantRepository;
         this.grupoEmpresasRepository = grupoEmpresasRepository;
+        this.outboxPublisher = outboxPublisher;
+        this.tenantEstadoCache = tenantEstadoCache;
         this.delayMs = delayMs;
     }
 
@@ -279,6 +287,63 @@ public class TenantService {
         auditLogService.registrar(tenant.getId(), tenantContext.current().userId(), "Tenant", tenant.getId(),
                 "ActivacionEmpresa", TenantEstado.PENDIENTE_ACTIVACION, TenantEstado.ACTIVO);
         return resumen(tenant, registrante != null ? registrante.getEmail() : null, cognitoError);
+    }
+
+    /**
+     * S6: una empresa ACTIVO pasa a SUSPENDIDO (409 desde otro estado; 404 fuera del alcance del actor). Sus
+     * cuentas se deshabilitan en Cognito y sus sesiones se cierran; los datos no se tocan. Un error de Cognito
+     * se devuelve en {@code cognitoError} y no revierte la suspensión: el filtro de estado ya corta el acceso.
+     */
+    @Transactional
+    public TenantResumenResponse suspender(String tenantId, String motivo) {
+        TenantContext.AuthenticatedUser actor = tenantContext.current();
+        Tenant tenant = alcancePlataformaService.exigir(actor, tenantId);
+        if (!TenantEstado.ACTIVO.equals(tenant.getEstado())) {
+            throw new DomainException(409, "Solo se puede suspender una empresa activa", "estado");
+        }
+        String motivoLimpio = motivo.trim();
+        tenant.cambiarEstado(TenantEstado.SUSPENDIDO);
+        tenantRepository.saveAndFlush(tenant);
+        tenantEstadoCache.invalidar(tenantId);
+        String cognitoError = enCognito(tenantId, cognitoProvisionService::deshabilitar);
+        auditLogService.registrar(tenantId, actor.userId(), "Tenant", tenantId, "SuspensionEmpresa",
+                TenantEstado.ACTIVO, TenantEstado.SUSPENDIDO + "|" + motivoLimpio);
+        outboxPublisher.registrar("tenant.suspendido", tenantId, tenantId,
+                Map.of("tenantId", tenantId, "motivo", motivoLimpio));
+        return resumen(tenant, emailDe(tenant.getRegistradoPor()), cognitoError);
+    }
+
+    /** S6: una empresa SUSPENDIDO vuelve a ACTIVO (409 desde otro estado) y sus cuentas se habilitan en Cognito. */
+    @Transactional
+    public TenantResumenResponse reactivar(String tenantId) {
+        TenantContext.AuthenticatedUser actor = tenantContext.current();
+        Tenant tenant = alcancePlataformaService.exigir(actor, tenantId);
+        if (!TenantEstado.SUSPENDIDO.equals(tenant.getEstado())) {
+            throw new DomainException(409, "Solo se puede reactivar una empresa suspendida", "estado");
+        }
+        tenant.cambiarEstado(TenantEstado.ACTIVO);
+        tenantRepository.saveAndFlush(tenant);
+        tenantEstadoCache.invalidar(tenantId);
+        String cognitoError = enCognito(tenantId, cognitoProvisionService::habilitar);
+        auditLogService.registrar(tenantId, actor.userId(), "Tenant", tenantId, "ReactivacionEmpresa",
+                TenantEstado.SUSPENDIDO, TenantEstado.ACTIVO);
+        outboxPublisher.registrar("tenant.reactivado", tenantId, tenantId, Map.of("tenantId", tenantId));
+        return resumen(tenant, emailDe(tenant.getRegistradoPor()), cognitoError);
+    }
+
+    /** Aplica la acción a cada usuario de la empresa con identidad en Cognito; junta los errores distintos. */
+    private String enCognito(String tenantId, Function<Usuario, String> accion) {
+        Set<String> errores = new java.util.LinkedHashSet<>();
+        for (Usuario usuario : usuarioRepository.findByTenantId(tenantId)) {
+            if (usuario.getCognitoSub() == null || usuario.getCognitoSub().isBlank()) {
+                continue;
+            }
+            String error = accion.apply(usuario);
+            if (error != null) {
+                errores.add(error);
+            }
+        }
+        return errores.isEmpty() ? null : String.join("; ", errores);
     }
 
     /** S2: la empresa pasa a RECHAZADO y quien la registró a RECHAZADO, con el motivo en la auditoría. */

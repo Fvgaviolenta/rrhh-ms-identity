@@ -32,6 +32,7 @@ import java.util.Map;
  *  - "postulante2"      : otro Google sin empresa, para el flujo pedir acceso y ser asignado.
  *  - "postulante3"      : otro Google sin empresa, para ver su solicitud pendiente en /auth/me.
  *  - "operador-grupo"   : OperadorSaaS con fila propia (OPERADOR_GRUPO_ID) que cada prueba asigna a su grupo.
+ *  - "admin-suspendida" : Admin de RRHH de TENANT_SUSPENDIBLE, empresa que SuspensionIT suspende y reactiva.
  *  - "google-<x>"       : Google sin empresa propio de cada prueba (sub cognito-x, <x>@gmail.com),
  *                         para no compartir filas entre clases de prueba sobre la misma base H2.
  */
@@ -42,6 +43,8 @@ public class TestJwtConfig {
     private static final String TENANT_OTRO = "cccccccc-cccc-cccc-cccc-cccccccccccc";
     /** custom:user_id del token "operador-grupo"; la fila OperadorSaaS la crea la prueba que lo usa. */
     public static final String OPERADOR_GRUPO_ID = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+    /** Empresa del token "admin-suspendida"; la crea SuspensionIT. */
+    public static final String TENANT_SUSPENDIBLE = "ffffffff-ffff-ffff-ffff-ffffffffffff";
     private static final List<Map<String, Object>> GOOGLE = List.of(Map.of("providerName", "Google"));
 
     @Bean
@@ -89,6 +92,10 @@ public class TestJwtConfig {
                         .claim("email", "operador.grupo@rrhh.local")
                         .claim("custom:role", "OperadorSaaS")
                         .claim("custom:user_id", OPERADOR_GRUPO_ID);
+                case "admin-suspendida" -> builder.subject("cognito-admin-suspendida")
+                        .claim("email", "admin.suspendida@rrhh.local")
+                        .claim("custom:tenant_id", TENANT_SUSPENDIBLE)
+                        .claim("custom:role", "Admin de RRHH");
                 case "owner-google" -> builder.subject("cognito-owner")
                         .claim("email", "owner@gmail.com")
                         .claim("cognito:username", "google_111")
