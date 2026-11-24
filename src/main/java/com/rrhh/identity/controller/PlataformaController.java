@@ -3,9 +3,11 @@ package com.rrhh.identity.controller;
 import com.rrhh.identity.dto.ApiResponse;
 import com.rrhh.identity.dto.request.CambiarRolUsuarioRequest;
 import com.rrhh.identity.dto.request.CrearUsuarioPlataformaRequest;
+import com.rrhh.identity.dto.request.MensajePlataformaRequest;
 import com.rrhh.identity.dto.request.RechazarEmpresaRequest;
 import com.rrhh.identity.dto.response.TenantResumenResponse;
 import com.rrhh.identity.dto.response.UsuarioResponse;
+import com.rrhh.identity.service.MensajePlataformaService;
 import com.rrhh.identity.service.TenantService;
 import com.rrhh.identity.service.UsuarioService;
 import jakarta.validation.Valid;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/plataforma")
@@ -29,10 +32,13 @@ public class PlataformaController {
 
     private final TenantService tenantService;
     private final UsuarioService usuarioService;
+    private final MensajePlataformaService mensajePlataformaService;
 
-    public PlataformaController(TenantService tenantService, UsuarioService usuarioService) {
+    public PlataformaController(TenantService tenantService, UsuarioService usuarioService,
+                                MensajePlataformaService mensajePlataformaService) {
         this.tenantService = tenantService;
         this.usuarioService = usuarioService;
+        this.mensajePlataformaService = mensajePlataformaService;
     }
 
     @GetMapping("/tenants")
@@ -92,5 +98,16 @@ public class PlataformaController {
     @PreAuthorize("hasAnyRole('OPERADOR_SAAS','ADMIN_PLATAFORMA')")
     public ApiResponse<TenantResumenResponse> reactivar(@PathVariable("tenant_id") String tenantId) {
         return ApiResponse.ok(tenantService.reactivar(tenantId), "Empresa reactivada");
+    }
+
+    @PostMapping("/tenants/{tenant_id}/mensajes")
+    @PreAuthorize("hasAnyRole('OPERADOR_SAAS','ADMIN_PLATAFORMA')")
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> enviarMensaje(
+            @PathVariable("tenant_id") String tenantId,
+            @Valid @RequestBody MensajePlataformaRequest request
+    ) {
+        int destinatarios = mensajePlataformaService.enviar(tenantId, request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(new ApiResponse<>(202, "Mensaje enviado", Map.of("destinatarios", destinatarios), List.of()));
     }
 }
